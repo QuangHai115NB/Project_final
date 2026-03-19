@@ -5,6 +5,10 @@ from werkzeug.utils import secure_filename
 from src.services.pdf_extractor import extract_text_from_pdf
 from src.services.text_preprocess import clean_text
 
+from src.services.section_parser import parse_sections
+
+from src.services.rule_checker import check_missing_sections, check_generic_phrases, check_cv_length
+
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 ALLOWED_EXTENSIONS = {"pdf"}
@@ -39,6 +43,14 @@ def analyze_cv():
     raw_text, meta = extract_text_from_pdf(save_path)
     cleaned = clean_text(raw_text)
 
+    # Phân tích các section trong CV
+    sections = parse_sections(cleaned)
+
+    # Kiểm tra các lỗi rule
+    missing_sections = check_missing_sections(sections)
+    generic_phrases = check_generic_phrases(cleaned)
+    cv_length = check_cv_length(cleaned)
+
     preview = cleaned[:700].strip()
 
     return jsonify({
@@ -48,5 +60,9 @@ def analyze_cv():
             "char_count": len(cleaned),
             "word_count": len(cleaned.split()),
         },
-        "preview": preview
+        "preview": cleaned[:700].strip(),
+        "sections": sections,  # Các phần đã phân tích
+        "missing_sections": missing_sections,  # Các phần thiếu
+        "generic_phrases": generic_phrases,  # Cụm từ chung chung
+        "cv_length": cv_length  # Độ dài CV
     }), 200
