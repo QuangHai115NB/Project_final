@@ -1,0 +1,21 @@
+# Python environment
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# IDEs
+.vscode/
+.idea/
+
+# Uploaded files (Quan trọng: Không nên đưa file PDF của người dùng lên Git)
+uploads/
+storage/
+
+# Environment variables
+.env
+
+# Database (nếu bạn có file sqlite cục bộ)
+*.db
+*.sqlite3
