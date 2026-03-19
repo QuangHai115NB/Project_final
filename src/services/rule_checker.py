@@ -29,3 +29,17 @@ def check_cv_length(text: str) -> str:
     elif word_count > 1000:
         return "Too long"
     return "Normal"
+def run_rule_checks(text: str, parsed_sections: dict) -> dict:
+    """
+    Hàm này chạy tất cả các kiểm tra cho CV: thiếu mục, cụm từ chung chung, độ dài CV
+    Trả về báo cáo lỗi cho CV
+    """
+    missing_sections = check_missing_sections(parsed_sections)
+    generic_phrases = check_generic_phrases(text)
+    cv_length = check_cv_length(text)
+
+    return {
+        "missing_sections": missing_sections,
+        "generic_phrases": generic_phrases,
+        "cv_length": cv_length
+    }

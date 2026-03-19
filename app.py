@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from flask import Flask, render_template
+from flask import Flask
 
 load_dotenv()
 
@@ -9,14 +9,19 @@ def create_app():
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev")
     app.config["UPLOAD_DIR"] = os.getenv("UPLOAD_DIR", "uploads")
 
-    # Register API blueprint
+    # Khởi tạo và kiểm tra kết nối DB
+    from src.db.database import init_db
+    init_db()
+
     from src.api.routes import api_bp
+    from src.api.document_routes import doc_bp
+
     app.register_blueprint(api_bp)
+    app.register_blueprint(doc_bp)
 
     @app.get("/")
-    def index():
-        # Tạm thời trả text cũng được, nhưng để đẹp ta render html
-        return "CV Reviewer is running! Go to /api/analyze via POST."
+    def home():
+        return "CV Reviewer is running!"
 
     return app
 
