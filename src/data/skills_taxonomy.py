@@ -1,3 +1,5 @@
+# src/data/skills_taxonomy.py
+
 from collections import defaultdict
 import re
 from typing import Dict, List

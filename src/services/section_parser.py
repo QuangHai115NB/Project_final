@@ -1,40 +1,75 @@
-import re
+# src/services/section_parser.py
 
-SECTION_HEADERS = {
-    "Summary": ["summary", "profile", "objective","professional summary", "career objective", "about me", "background", "executive summary"],
-    "Skills": ["skills", "technical skills", "key skills", "competencies","technologies", "tools", "proficiencies", "areas of expertise", "hard skills", "soft skills", "technical stack"],
-    "Experience": ["experience", "work experience", "employment", "projects","work history", "professional experience", "professional background", "career history", "employment history"],
-    "Education": ["education", "academic", "qualification","academic background", "academic profile", "educational history", "degrees"],
-    "Projects": ["projects", "personal projects", "open source", "academic projects", "selected projects", "notable projects", "github projects", "coursework projects"],
-    "Certifications": ["certifications", "certificates","awards", "honors", "licenses", "professional certifications", "training"],
-}
+import re
+from src.data.rules_config import SECTION_HEADERS, REQUIRED_CV_SECTIONS
+from src.services.text_preprocess import clean_text
+
+
+def _normalize_header(line: str) -> str:
+    value = line.strip().lower().rstrip(":")
+    value = re.sub(r"[^a-z\s]", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+def _detect_section_header(line: str):
+    normalized = _normalize_header(line)
+    if not normalized:
+        return None
+
+    # Header thường ngắn
+    if len(normalized.split()) > 5:
+        return None
+
+    for section, aliases in SECTION_HEADERS.items():
+        if normalized in aliases:
+            return section
+
+    for section, aliases in SECTION_HEADERS.items():
+        if any(normalized.startswith(alias) for alias in aliases):
+            return section
+
+    return None
 
 
 def parse_sections(text: str) -> dict:
-    """
-    Tách các section trong CV dựa trên các từ khóa đã định nghĩa.
-    Trả về một dictionary với tên các section là key và nội dung là value.
-    """
+    lines = [line.strip() for line in clean_text(text).split("\n")]
     sections = {}
     current_section = None
-    section_text = []
+    buffer = []
 
-    # Chuẩn hóa text
-    text = text.lower().replace("\n", " ").strip()
+    def flush_buffer(section_name, items):
+        if not section_name or not items:
+            return
+        content = "\n".join(x for x in items if x.strip()).strip()
+        if not content:
+            return
 
-    # Lặp qua các section header đã định nghĩa
-    for section, headers in SECTION_HEADERS.items():
-        for header in headers:
-            if header in text:
-                current_section = section
-                section_text = []
-                break
+        if section_name in sections:
+            sections[section_name] += "\n" + content
+        else:
+            sections[section_name] = content
 
-        if current_section:
-            # Tìm tất cả nội dung trong section này
-            start_index = text.find(current_section.lower()) + len(current_section)
-            end_index = text.find(SECTION_HEADERS.get(current_section, [None])[1]) if len(SECTION_HEADERS.get(current_section)) > 1 else -1
-            sections[current_section] = text[start_index:end_index].strip()
-            break
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
 
-    return sections
+        detected = _detect_section_header(line)
+        if detected:
+            flush_buffer(current_section, buffer)
+            current_section = detected
+            buffer = []
+        else:
+            if current_section:
+                buffer.append(line)
+
+    flush_buffer(current_section, buffer)
+
+    return {
+        "sections": sections,
+        "sections_found": list(sections.keys()),
+        "missing_required_sections": [
+            section for section in REQUIRED_CV_SECTIONS if section not in sections
+        ]
+    }
