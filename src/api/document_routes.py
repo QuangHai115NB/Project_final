@@ -218,3 +218,111 @@ def create_match():
         return jsonify({"error": str(e)}), 500
     finally:
         db.close()
+
+@doc_bp.put("/csv/update/<cv_id>")
+def update_csv(cv_id):
+    db = SessionLocal()
+    try:
+        cv_record = db.query(CVDocument).filter(CVDocument.id == cv_id).first()
+        if not cv_record:
+            return jsonify({"error": "CV not found"}), 404
+
+        cv_record = request.json.get("title", cv_record.title)
+        cv_record.content_text = request.json.get("content_text", cv_record.content_text)
+
+        db.commit()
+        db.refresh(cv_record)
+        return jsonify({"message": "CV updated successfully"}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+# API để sửa CV
+@doc_bp.put("/cvs/update/<cv_id>")
+def update_cv(cv_id):
+    db = SessionLocal()
+    try:
+        cv_record = db.query(CVDocument).filter(CVDocument.id == cv_id).first()
+        if not cv_record:
+            return jsonify({"error": "CV not found"}), 404
+
+        # Update dữ liệu CV
+        cv_record.title = request.json.get("title", cv_record.title)
+        cv_record.content_text = request.json.get("content_text", cv_record.content_text)
+
+        db.commit()
+        db.refresh(cv_record)
+
+        return jsonify({"message": "CV updated successfully", "cv": cv_record.title}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+# API để xóa CV
+@doc_bp.delete("/cvs/delete/<cv_id>")
+def delete_cv(cv_id):
+    db = SessionLocal()
+    try:
+        cv_record = db.query(CVDocument).filter(CVDocument.id == cv_id).first()
+        if not cv_record:
+            return jsonify({"error": "CV not found"}), 404
+
+        db.delete(cv_record)
+        db.commit()
+
+        return jsonify({"message": "CV deleted successfully"}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+# API để sửa JD
+@doc_bp.put("/jds/update/<jd_id>")
+def update_jd(jd_id):
+    db = SessionLocal()
+    try:
+        jd_record = db.query(JDDocument).filter(JDDocument.id == jd_id).first()
+        if not jd_record:
+            return jsonify({"error": "JD not found"}), 404
+
+        # Update dữ liệu JD
+        jd_record.title = request.json.get("title", jd_record.title)
+        jd_record.content_text = request.json.get("content_text", jd_record.content_text)
+
+        db.commit()
+        db.refresh(jd_record)
+
+        return jsonify({"message": "JD updated successfully", "jd": jd_record.title}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+# API để xóa JD
+@doc_bp.delete("/jds/delete/<jd_id>")
+def delete_jd(jd_id):
+    db = SessionLocal()
+    try:
+        jd_record = db.query(JDDocument).filter(JDDocument.id == jd_id).first()
+        if not jd_record:
+            return jsonify({"error": "JD not found"}), 404
+
+        db.delete(jd_record)
+        db.commit()
+
+        return jsonify({"message": "JD deleted successfully"}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
