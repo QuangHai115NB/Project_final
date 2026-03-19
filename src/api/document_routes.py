@@ -11,6 +11,8 @@ from src.services.jd_matcher import match_cv_to_jd
 import json  # Để xử lý JSON cho report nếu cần
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from src.services.languagetool_checker import check_english_language
+from src.services.report_builder import build_match_report
 
 doc_bp = Blueprint("documents", __name__, url_prefix="/api")
 
@@ -162,58 +164,64 @@ def create_match():
         if not all([user_id, cv_id, jd_id]):
             return jsonify({"error": "user_id, cv_id, jd_id are required"}), 400
 
-        # Truy vấn dữ liệu từ DB
-        cv_record = db.query(CVDocument).filter(CVDocument.id == cv_id, CVDocument.user_id == user_id).first()
-        jd_record = db.query(JDDocument).filter(JDDocument.id == jd_id, JDDocument.user_id == user_id).first()
+        cv_record = db.query(CVDocument).filter(
+            CVDocument.id == cv_id,
+            CVDocument.user_id == user_id
+        ).first()
+
+        jd_record = db.query(JDDocument).filter(
+            JDDocument.id == jd_id,
+            JDDocument.user_id == user_id
+        ).first()
 
         if not cv_record or not jd_record:
             return jsonify({"error": "CV or JD not found for this user"}), 404
 
-        # Lấy nội dung text, đảm bảo không bị None
-        cv_text = cv_record.content_text or ""
-        jd_text = jd_record.content_text or ""
+        cv_text = (cv_record.content_text or "").strip()
+        jd_text = (jd_record.content_text or "").strip()
 
-        # --- SỬA TẠI ĐÂY: Truyền TEXT vào hàm, không truyền ID ---
+        if not cv_text:
+            return jsonify({"error": "CV content is empty. Please re-upload the CV."}), 400
+
+        if not jd_text:
+            return jsonify({"error": "JD content is empty. Please re-upload the JD."}), 400
+
         parsed_sections = parse_sections(cv_text)
         rule_report = run_rule_checks(cv_text, parsed_sections)
+        language_report = check_english_language(cv_text)
+        jd_report = match_cv_to_jd(cv_text=cv_text, jd_text=jd_text, parsed_cv=parsed_sections)
 
-        # Chú ý: Truyền cv_text và jd_text thay vì cv_id và jd_id
-        jd_report = match_cv_to_jd(cv_text, jd_text)
-
-        # Kiểm tra và ép kiểu numpy.float64 (như đã xử lý lần trước)
-        if hasattr(jd_report, 'dtype') or isinstance(jd_report, (float, int)):
-            score = float(jd_report)
-            jd_report = {"similarity_score": score}
-        elif isinstance(jd_report, dict):
-            # Nếu là dict, đảm bảo score bên trong cũng là float chuẩn
-            if "similarity_score" in jd_report:
-                jd_report["similarity_score"] = float(jd_report["similarity_score"])
-
-        current_score = jd_report.get("similarity_score", 0)
-
-        report = {
-            "cv_id": cv_record.id,
-            "jd_id": jd_record.id,
-            "sections_found": parsed_sections.get("sections_found", []),
-            "jd_match": jd_report,
-            "suggestions": ["Add missing sections", "Improve keywords"]
-        }
+        report = build_match_report(
+            cv_record=cv_record,
+            jd_record=jd_record,
+            cv_text=cv_text,
+            jd_text=jd_text,
+            parsed_sections=parsed_sections,
+            rule_report=rule_report,
+            language_report=language_report,
+            jd_report=jd_report,
+        )
 
         history = MatchHistory(
             user_id=user_id,
             cv_id=cv_id,
             jd_id=jd_id,
-            similarity_score=current_score,
-            report_json=json.dumps(report, ensure_ascii=False)  # Thêm ensure_ascii để đọc được tiếng Việt
+            similarity_score=float(report["summary"]["final_score"]),
+            report_json=json.dumps(report, ensure_ascii=False)
         )
+
         db.add(history)
         db.commit()
+        db.refresh(history)
 
-        return jsonify({"message": "Match created", "match_id": history.id, "report": report}), 201
+        return jsonify({
+            "message": "Match created successfully",
+            "match_id": history.id,
+            "report": report
+        }), 201
 
     except Exception as e:
         db.rollback()
-        # In ra lỗi chi tiết để debug dễ hơn
         print(f"DEBUG ERROR: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
@@ -227,7 +235,7 @@ def update_csv(cv_id):
         if not cv_record:
             return jsonify({"error": "CV not found"}), 404
 
-        cv_record = request.json.get("title", cv_record.title)
+        cv_record.title = request.json.get("title", cv_record.title)
         cv_record.content_text = request.json.get("content_text", cv_record.content_text)
 
         db.commit()
