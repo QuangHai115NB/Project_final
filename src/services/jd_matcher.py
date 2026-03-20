@@ -1,7 +1,8 @@
-# src/services/jd_matcher.py
+
+from __future__ import annotations
 
 import re
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Tuple
 
 from rapidfuzz import fuzz
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -11,9 +12,33 @@ from src.data.rules_config import (
     JD_PREFERRED_MARKERS,
     KEYWORD_BLACKLIST,
     MAX_KEYWORDS,
+    SCORE_WEIGHTS,
 )
 from src.data.skills_taxonomy import extract_skills
 from src.services.text_preprocess import normalize_for_matching, split_lines
+
+# Import semantic matcher — graceful fallback nếu chưa cài
+try:
+    from src.services.semantic_matcher import (
+        match_bullets_to_jd,
+        find_skill_context_in_cv,
+        compute_semantic_similarity,
+    )
+
+    SEMANTIC_AVAILABLE = True
+except ImportError:
+    SEMANTIC_AVAILABLE = False
+
+# Import suggestion engine
+try:
+    from src.services.suggestion_engine import generate_bulk_suggestions
+
+    SUGGESTION_ENGINE_AVAILABLE = True
+except ImportError:
+    SUGGESTION_ENGINE_AVAILABLE = False
+
+
+# ─── Utility helpers ────────────────────────────────────────────────
 
 def _safe_ratio(numerator: int, denominator: int) -> float:
     if denominator <= 0:
@@ -32,13 +57,13 @@ def _detect_seniority(text: str) -> str:
     lowered = text.lower()
     if "intern" in lowered:
         return "intern"
-    if "junior" in lowered or "fresher" in lowered:
+    if "junior" in lowered or "fresher" in lowered or "entry" in lowered:
         return "junior"
-    if "senior" in lowered:
+    if "senior" in lowered or "sr." in lowered:
         return "senior"
-    if "lead" in lowered or "principal" in lowered or "architect" in lowered:
+    if any(k in lowered for k in ["lead", "principal", "architect", "staff"]):
         return "lead"
-    if "mid-level" in lowered or "mid level" in lowered:
+    if any(k in lowered for k in ["mid-level", "mid level", "middle"]):
         return "mid"
     return "unknown"
 
@@ -48,7 +73,13 @@ def _is_preferred_line(line: str) -> bool:
     return any(marker in lowered for marker in JD_PREFERRED_MARKERS)
 
 
+# ─── Layer 1: Skill Matching ─────────────────────────────────────────
+
 def _extract_jd_skills(jd_text: str) -> Dict[str, List[str]]:
+    """
+    Tách skills từ JD thành required vs preferred.
+    Logic: line chứa "preferred/nice-to-have" → preferred, còn lại → required.
+    """
     required: Set[str] = set()
     preferred: Set[str] = set()
 
@@ -56,7 +87,6 @@ def _extract_jd_skills(jd_text: str) -> Dict[str, List[str]]:
         line_skills = set(extract_skills(line).get("skills", []))
         if not line_skills:
             continue
-
         if _is_preferred_line(line):
             preferred.update(line_skills)
         else:
@@ -66,137 +96,177 @@ def _extract_jd_skills(jd_text: str) -> Dict[str, List[str]]:
         required.update(extract_skills(jd_text).get("skills", []))
 
     preferred = preferred - required
-
     return {
         "required": sorted(required),
         "preferred": sorted(preferred),
     }
 
 
-def _extract_top_keywords(cv_text: str, jd_text: str, limit: int = MAX_KEYWORDS) -> Dict[str, object]:
-    cv_normalized = normalize_for_matching(cv_text)
-    jd_normalized = normalize_for_matching(jd_text)
+def _compute_skill_score(
+        cv_skills: Set[str],
+        required_skills: Set[str],
+        preferred_skills: Set[str],
+) -> Tuple[float, Dict]:
+    """
+    Layer 1 score: weighted skill coverage.
 
-    if not cv_normalized or not jd_normalized:
-        return {
-            "keywords": [],
-            "matched": [],
-            "missing": [],
-            "score": 0.0,
-            "tfidf_similarity": 0.0
-        }
+    Formula:
+        skill_score = required_coverage * 75 + preferred_coverage * 25
 
-    vectorizer = TfidfVectorizer(
-        stop_words="english",
-        ngram_range=(1, 2),
-        max_features=500
-    )
+    Tại sao không 100% required:
+    Có trường hợp JD list quá nhiều skills, không ai có hết.
 
-    matrix = vectorizer.fit_transform([cv_normalized, jd_normalized])
-    feature_names = vectorizer.get_feature_names_out()
-    jd_vector = matrix[1].toarray().ravel()
-
-    ranked = sorted(
-        zip(feature_names, jd_vector),
-        key=lambda x: x[1],
-        reverse=True
-    )
-
-    keywords = []
-    for term, weight in ranked:
-        if weight <= 0:
-            continue
-        if len(term) < 3:
-            continue
-        if term in KEYWORD_BLACKLIST:
-            continue
-        if term.isdigit():
-            continue
-        keywords.append(term)
-        if len(keywords) >= limit:
-            break
-
-    matched = [kw for kw in keywords if kw in cv_normalized]
-    missing = [kw for kw in keywords if kw not in cv_normalized]
-
-    tfidf_similarity = float(cosine_similarity(matrix[0:1], matrix[1:2])[0][0]) * 100.0
-    keyword_score = _safe_ratio(len(matched), len(keywords)) * 100.0 if keywords else 0.0
-
-    return {
-        "keywords": keywords,
-        "matched": matched,
-        "missing": missing,
-        "score": round(keyword_score, 2),
-        "tfidf_similarity": round(tfidf_similarity, 2),
-    }
-
-
-def _calculate_text_similarity(text_a: str, text_b: str) -> float:
-    a = normalize_for_matching(text_a)
-    b = normalize_for_matching(text_b)
-
-    if not a or not b:
-        return 0.0
-
-    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
-    matrix = vectorizer.fit_transform([a, b])
-    return float(cosine_similarity(matrix[0:1], matrix[1:2])[0][0]) * 100.0
-
-
-def _build_rewrite_examples(missing_terms: List[str]) -> List[dict]:
-    focus = missing_terms[:3]
-    if not focus:
-        return []
-
-    joined = ", ".join(focus)
-
-    return [
-        {
-            "target_section": "Experience",
-            "template": f"Developed and maintained [system/feature] using {joined} to support [business goal], improving [metric] by [X%]."
-        },
-        {
-            "target_section": "Projects",
-            "template": f"Built [project name] with {joined}; implemented [API/module], handled [scale/use case], and achieved [measurable result]."
-        },
-        {
-            "target_section": "Summary",
-            "template": f"Backend/Software Engineer with hands-on experience in {joined}, focusing on building scalable and maintainable systems."
-        }
-    ]
-
-
-def match_cv_to_jd(cv_text: str, jd_text: str, parsed_cv: dict = None) -> dict:
-    cv_sections = (parsed_cv or {}).get("sections", {}) if isinstance(parsed_cv, dict) else {}
-
-    cv_skill_info = extract_skills(cv_text)
-    cv_skills = set(cv_skill_info.get("skills", []))
-
-    jd_skill_info = _extract_jd_skills(jd_text)
-    required_skills = set(jd_skill_info["required"])
-    preferred_skills = set(jd_skill_info["preferred"])
-
+    Returns: (score_0_100, detail_dict)
+    """
     matched_required = sorted(required_skills & cv_skills)
     missing_required = sorted(required_skills - cv_skills)
-
     matched_preferred = sorted(preferred_skills & cv_skills)
     missing_preferred = sorted(preferred_skills - cv_skills)
 
     required_ratio = _safe_ratio(len(matched_required), len(required_skills))
     preferred_ratio = _safe_ratio(len(matched_preferred), len(preferred_skills))
-    skill_score = (required_ratio * 80.0) + (preferred_ratio * 20.0)
 
-    keyword_result = _extract_top_keywords(cv_text, jd_text)
+    score = (required_ratio * 75.0) + (preferred_ratio * 25.0)
 
+    return score, {
+        "matched_required": matched_required,
+        "missing_required": missing_required,
+        "matched_preferred": matched_preferred,
+        "missing_preferred": missing_preferred,
+        "required_coverage_pct": round(required_ratio * 100, 1),
+        "preferred_coverage_pct": round(preferred_ratio * 100, 1),
+    }
+
+
+# ─── Layer 2: Semantic Similarity ────────────────────────────────────
+
+def _compute_semantic_score(
+        cv_sections: Dict[str, str],
+        jd_text: str,
+) -> Tuple[float, Dict]:
+    """
+    Layer 2: So sánh CV experience bullets vs JD responsibilities
+    dùng sentence-transformers.
+
+    Nếu model không available → fallback về TF-IDF similarity.
+
+    Returns: (score_0_100, detail_dict)
+    """
     experience_text = "\n".join(
-        value for key, value in cv_sections.items()
-        if key in {"Experience", "Projects", "Summary"}
+        cv_sections.get(sec, "")
+        for sec in ("Experience", "Projects", "Summary")
     ).strip()
 
     if not experience_text:
-        experience_text = cv_text
+        experience_text = ""
 
-    responsibility_score = _calculate_text_similarity(experience_text, jd_text)
+    if SEMANTIC_AVAILABLE:
+        result = match_bullets_to_jd(
+            cv_experience_text=experience_text,
+            jd_text=jd_text,
+            threshold=0.42,
+        )
+        score = result.get("semantic_score", 0.0)
+        return score, result
+    else:
+        # Fallback TF-IDF
+        score = _tfidf_similarity(experience_text, jd_text)
+        return score, {
+            "status": "fallback_tfidf",
+            "semantic_score": score,
+            "top_matches": [],
+            "weak_matches": [],
+            "unmatched_jd_lines": [],
+        }
+
+
+def _tfidf_similarity(text_a: str, text_b: str) -> float:
+    a = normalize_for_matching(text_a)
+    b = normalize_for_matching(text_b)
+    if not a or not b:
+        return 0.0
+    try:
+        vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+        matrix = vec.fit_transform([a, b])
+        return float(cosine_similarity(matrix[0:1], matrix[1:2])[0][0]) * 100.0
+    except Exception:
+        return 0.0
+
+
+# ─── Layer 3: Keyword Matching ───────────────────────────────────────
+
+def _compute_keyword_score(
+        cv_text: str,
+        jd_text: str,
+        limit: int = MAX_KEYWORDS,
+) -> Tuple[float, Dict]:
+    """
+    Layer 3: TF-IDF keyword overlap.
+    Trích ra top keywords từ JD, check bao nhiêu có trong CV.
+
+    Returns: (score_0_100, detail_dict)
+    """
+    cv_norm = normalize_for_matching(cv_text)
+    jd_norm = normalize_for_matching(jd_text)
+
+    if not cv_norm or not jd_norm:
+        return 0.0, {"keywords": [], "matched": [], "missing": [], "tfidf_similarity": 0.0}
+
+    try:
+        vectorizer = TfidfVectorizer(
+            stop_words="english",
+            ngram_range=(1, 2),
+            max_features=500,
+        )
+        matrix = vectorizer.fit_transform([cv_norm, jd_norm])
+        feature_names = vectorizer.get_feature_names_out()
+        jd_vector = matrix[1].toarray().ravel()
+
+        ranked = sorted(
+            zip(feature_names, jd_vector), key=lambda x: x[1], reverse=True
+        )
+
+        keywords = []
+        for term, weight in ranked:
+            if weight <= 0 or len(term) < 3 or term in KEYWORD_BLACKLIST or term.isdigit():
+                continue
+            keywords.append(term)
+            if len(keywords) >= limit:
+                break
+
+        matched = [kw for kw in keywords if kw in cv_norm]
+        missing = [kw for kw in keywords if kw not in cv_norm]
+        tfidf_sim = float(cosine_similarity(matrix[0:1], matrix[1:2])[0][0]) * 100.0
+        kw_score = _safe_ratio(len(matched), len(keywords)) * 100.0 if keywords else 0.0
+
+        return kw_score, {
+            "keywords": keywords[:15],
+            "matched": matched[:10],
+            "missing": missing[:10],
+            "tfidf_similarity": round(tfidf_sim, 2),
+        }
+    except Exception:
+        return 0.0, {"keywords": [], "matched": [], "missing": [], "tfidf_similarity": 0.0}
+
+
+# ─── Layer 4: Experience Alignment ───────────────────────────────────
+
+def _compute_experience_score(
+        cv_sections: Dict[str, str],
+        cv_text: str,
+        jd_text: str,
+) -> Tuple[float, Dict]:
+    """
+    Layer 4: Experience years + responsibility alignment.
+
+    Formula:
+        experience_score = years_score * 0.30 + responsibility_score * 0.70
+
+    Returns: (score_0_100, detail_dict)
+    """
+    experience_text = "\n".join(
+        cv_sections.get(sec, "") for sec in ("Experience", "Projects", "Summary")
+    ).strip() or cv_text
 
     cv_years = _extract_years_of_experience(experience_text)
     jd_years = _extract_years_of_experience(jd_text)
@@ -204,125 +274,493 @@ def match_cv_to_jd(cv_text: str, jd_text: str, parsed_cv: dict = None) -> dict:
     seniority_jd = _detect_seniority(jd_text)
 
     if jd_years > 0:
-        if cv_years > 0:
-            years_score = min(100.0, (cv_years / jd_years) * 100.0)
-        else:
-            years_score = 35.0
+        years_score = min(100.0, (cv_years / jd_years) * 100.0) if cv_years > 0 else 35.0
     else:
         years_score = 70.0
 
-    experience_score = (responsibility_score * 0.7) + (years_score * 0.3)
+    # Responsibility similarity (TF-IDF nếu không có semantic)
+    responsibility_score = _tfidf_similarity(experience_text, jd_text)
 
-    match_score = (
-        skill_score * 0.45
-        + keyword_result["score"] * 0.20
-        + experience_score * 0.20
-        + keyword_result["tfidf_similarity"] * 0.15
+    experience_score = (responsibility_score * 0.70) + (years_score * 0.30)
+
+    return experience_score, {
+        "cv_years": cv_years,
+        "jd_years": jd_years,
+        "years_score": round(years_score, 2),
+        "responsibility_score": round(responsibility_score, 2),
+        "cv_seniority": seniority_cv,
+        "jd_seniority": seniority_jd,
+    }
+
+
+# ─── Layer 5: Bullet Quality & Evidence Check ────────────────────────
+
+def _compute_structure_score(
+        cv_sections: Dict[str, str],
+        cv_skills: Set[str],
+        required_skills: Set[str],
+) -> Tuple[float, Dict]:
+    """
+    Layer 5: Bullet quality + skill evidence check.
+
+    Kiểm tra:
+    1. Skills có trong Skills section nhưng không có evidence trong Experience/Projects
+    2. Tỷ lệ bullets có action verb
+    3. Tỷ lệ bullets có metric
+
+    Returns: (score_0_100, detail_dict)
+    """
+    from src.data.rules_config import ACTION_VERBS, WEAK_BULLET_PATTERNS
+    import re as _re
+
+    skills_no_evidence = []
+
+    if SEMANTIC_AVAILABLE:
+        for skill in list(required_skills & cv_skills)[:10]:
+            ctx = find_skill_context_in_cv(skill, cv_sections)
+            if ctx["in_skills_section"] and not ctx["has_evidence"]:
+                skills_no_evidence.append(skill)
+
+    # Bullet analysis
+    exp_text = cv_sections.get("Experience", "") + "\n" + cv_sections.get("Projects", "")
+    bullets = [
+        line.strip(" \t-•●▪*")
+        for line in exp_text.split("\n")
+        if len(line.strip().split()) >= 4
+    ]
+
+    metric_pattern = _re.compile(
+        r"(\d+%|\d+\+|[$€£]\d+|\d+\s*(users|clients|ms|seconds|apis|services|modules|records|requests))",
+        _re.IGNORECASE,
     )
 
+    total = len(bullets)
+    action_count = sum(
+        1 for b in bullets
+        if b.lower().split()[0] in ACTION_VERBS if b.split()
+    )
+    metric_count = sum(1 for b in bullets if metric_pattern.search(b))
+    weak_count = sum(
+        1 for b in bullets
+        if any(b.lower().startswith(p) for p in WEAK_BULLET_PATTERNS)
+    )
+
+    penalty = 0
+    penalty += len(skills_no_evidence) * 8  # 8 điểm mỗi skill thiếu evidence
+    if total > 0:
+        action_ratio = action_count / total
+        metric_ratio = metric_count / total
+        if action_ratio < 0.5:
+            penalty += 15
+        elif action_ratio < 0.7:
+            penalty += 7
+        if metric_ratio == 0:
+            penalty += 15
+        elif metric_ratio < 0.3:
+            penalty += 7
+        if weak_count > 0:
+            penalty += weak_count * 5
+
+    score = max(0.0, 100.0 - penalty)
+
+    return score, {
+        "total_bullets": total,
+        "action_verb_count": action_count,
+        "metric_count": metric_count,
+        "weak_bullet_count": weak_count,
+        "skills_no_evidence": skills_no_evidence[:5],
+        "penalty_applied": penalty,
+    }
+
+
+# ─── Error & Suggestion Generator ────────────────────────────────────
+
+def _generate_errors_and_suggestions(
+        skill_detail: Dict,
+        keyword_detail: Dict,
+        experience_detail: Dict,
+        structure_detail: Dict,
+        semantic_detail: Dict,
+        cv_sections: Dict[str, str],
+        jd_text: str,
+        use_suggestion_engine: bool = True,
+) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Tổng hợp tất cả issues và suggestions từ các layers.
+    Mỗi issue có đầy đủ: code, error_type, severity, section, evidence, explanation, suggested_fix.
+    """
     issues = []
     suggestions = []
 
-    if missing_required:
+    # --- Skill issues ---
+    missing_req = skill_detail.get("missing_required", [])
+    missing_pref = skill_detail.get("missing_preferred", [])
+
+    if missing_req:
         issues.append({
             "code": "missing_required_skills",
+            "error_type": "skill_gap",
             "severity": "high",
-            "title": "Thiếu kỹ năng bắt buộc từ JD",
-            "details": missing_required
-        })
-        suggestions.append({
-            "type": "add_missing_skills",
-            "target": "skills_and_experience",
-            "message": (
-                "Nếu bạn thực sự đã dùng các công nghệ này, hãy thêm chúng vào cả mục Skills "
-                f"và bullet Experience/Projects: {', '.join(missing_required[:8])}."
-            )
+            "section": "Skills / Experience",
+            "evidence": missing_req,
+            "explanation": (
+                f"JD yêu cầu {len(missing_req)} kỹ năng mà CV chưa thể hiện: "
+                f"{', '.join(missing_req[:5])}."
+            ),
         })
 
-    if missing_preferred:
+    if missing_pref:
         issues.append({
             "code": "missing_preferred_skills",
+            "error_type": "skill_gap",
             "severity": "medium",
-            "title": "Thiếu kỹ năng ưu tiên / nice-to-have",
-            "details": missing_preferred
-        })
-        suggestions.append({
-            "type": "enhance_optional_skills",
-            "target": "skills",
-            "message": (
-                "Các kỹ năng nice-to-have sẽ giúp tăng điểm phù hợp nếu bạn có kinh nghiệm thực tế: "
-                f"{', '.join(missing_preferred[:8])}."
-            )
+            "section": "Skills",
+            "evidence": missing_pref,
+            "explanation": (
+                f"Các kỹ năng nice-to-have chưa có: {', '.join(missing_pref[:5])}. "
+                f"Thêm vào sẽ tăng điểm phù hợp."
+            ),
         })
 
-    if keyword_result["missing"]:
+    # --- Skills có trong Skills section nhưng không có evidence ---
+    no_evidence = structure_detail.get("skills_no_evidence", [])
+    if no_evidence:
+        issues.append({
+            "code": "skill_no_evidence",
+            "error_type": "missing_evidence",
+            "severity": "medium",
+            "section": "Experience / Projects",
+            "evidence": no_evidence,
+            "explanation": (
+                f"Các kỹ năng này có trong mục Skills nhưng không xuất hiện "
+                f"trong bất kỳ bullet nào của Experience/Projects: {', '.join(no_evidence)}. "
+                f"Recruiter sẽ nghi ngờ tính xác thực."
+            ),
+        })
+
+    # --- Keyword gap ---
+    missing_kw = keyword_detail.get("missing", [])
+    if missing_kw:
         issues.append({
             "code": "keyword_gap",
+            "error_type": "keyword_mismatch",
             "severity": "medium",
-            "title": "CV chưa cover đủ từ khóa quan trọng của JD",
-            "details": keyword_result["missing"][:10]
-        })
-        suggestions.append({
-            "type": "keyword_alignment",
-            "target": "summary_and_experience",
-            "message": (
-                "Hãy viết lại Summary/Experience để chứa đúng thuật ngữ gần JD hơn, ví dụ: "
-                + ", ".join(keyword_result["missing"][:8])
-            )
+            "section": "Summary / Experience",
+            "evidence": missing_kw[:8],
+            "explanation": (
+                f"CV chưa cover {len(missing_kw)} từ khóa quan trọng từ JD: "
+                f"{', '.join(missing_kw[:5])}."
+            ),
         })
 
-    if experience_score < 50:
+    # --- Weak bullets ---
+    if structure_detail.get("weak_bullet_count", 0) > 0:
+        issues.append({
+            "code": "weak_bullets",
+            "error_type": "language_quality",
+            "severity": "medium",
+            "section": "Experience / Projects",
+            "evidence": [f"{structure_detail['weak_bullet_count']} bullets bắt đầu bằng cụm từ thụ động"],
+            "explanation": (
+                "Bullets bắt đầu bằng 'Responsible for', 'Worked on', 'Helped with'... "
+                "thể hiện vai trò bị động, không thuyết phục."
+            ),
+        })
+
+    # --- Missing metrics ---
+    if structure_detail.get("metric_count", 0) == 0 and structure_detail.get("total_bullets", 0) > 0:
+        issues.append({
+            "code": "missing_metrics",
+            "error_type": "content_quality",
+            "severity": "medium",
+            "section": "Experience / Projects",
+            "evidence": ["0 bullets có số liệu đo lường"],
+            "explanation": (
+                "Không có bullet nào chứa số liệu (%, số user, số API, thời gian...). "
+                "CV IT mạnh cần ít nhất 2-3 bullets có con số cụ thể."
+            ),
+        })
+
+    # --- Experience alignment ---
+    exp_score = experience_detail.get("responsibility_score", 0)
+    if exp_score < 45:
         issues.append({
             "code": "weak_experience_alignment",
+            "error_type": "content_relevance",
             "severity": "high",
-            "title": "Mô tả kinh nghiệm chưa bám sát trách nhiệm trong JD",
-            "details": [
-                f"responsibility_score={round(responsibility_score, 2)}",
-                f"years_score={round(years_score, 2)}"
-            ]
-        })
-        suggestions.append({
-            "type": "rewrite_experience",
-            "target": "experience",
-            "message": "Viết lại bullet theo trách nhiệm trong JD: bạn đã xây dựng gì, dùng công nghệ gì, tác động gì, kết quả gì."
+            "section": "Experience",
+            "evidence": [
+                f"TF-IDF similarity với JD: {exp_score:.1f}/100",
+                f"CV years: {experience_detail.get('cv_years', 0)}, JD requires: {experience_detail.get('jd_years', 0)}",
+            ],
+            "explanation": (
+                "Nội dung Experience/Projects chưa bám sát trách nhiệm trong JD. "
+                "Cần viết lại bullets để phản ánh đúng công việc JD yêu cầu."
+            ),
         })
 
+    # --- Seniority mismatch ---
+    seniority_cv = experience_detail.get("cv_seniority", "unknown")
+    seniority_jd = experience_detail.get("jd_seniority", "unknown")
     if seniority_jd != "unknown" and seniority_cv != "unknown" and seniority_jd != seniority_cv:
         issues.append({
             "code": "seniority_gap",
+            "error_type": "level_mismatch",
             "severity": "low",
-            "title": "Cấp độ CV và JD có dấu hiệu lệch nhau",
-            "details": [f"cv={seniority_cv}", f"jd={seniority_jd}"]
+            "section": "Summary / Experience",
+            "evidence": [f"CV level: {seniority_cv}", f"JD level: {seniority_jd}"],
+            "explanation": (
+                f"JD tìm {seniority_jd} nhưng CV đang thể hiện {seniority_cv}. "
+                f"Cân nhắc điều chỉnh ngôn ngữ và scope dự án."
+            ),
         })
 
-    rewrite_examples = _build_rewrite_examples(
-        missing_required[:2] + keyword_result["missing"][:2]
+    # --- Semantic: unmatched JD responsibilities ---
+    unmatched_jd = semantic_detail.get("unmatched_jd_lines", [])
+    if len(unmatched_jd) >= 3:
+        issues.append({
+            "code": "uncovered_responsibilities",
+            "error_type": "content_relevance",
+            "severity": "medium",
+            "section": "Experience",
+            "evidence": [item["jd_line"][:100] for item in unmatched_jd[:3]],
+            "explanation": (
+                f"{len(unmatched_jd)} trách nhiệm trong JD chưa được cover "
+                f"bởi bất kỳ bullet nào trong Experience/Projects."
+            ),
+        })
+
+    # --- Generate suggested_fix cho từng issue ---
+    if use_suggestion_engine and SUGGESTION_ENGINE_AVAILABLE:
+        issues = generate_bulk_suggestions(
+            errors=issues,
+            cv_sections=cv_sections,
+            jd_text=jd_text,
+            max_api_calls=3,
+        )
+    else:
+        # Thêm suggested_fix rule-based nếu không có suggestion engine
+        from src.services.suggestion_engine import _get_rule_based_fix
+        for issue in issues:
+            issue["suggested_fix"] = _get_rule_based_fix(
+                issue["code"], issue.get("evidence", []), issue.get("section", "")
+            )
+
+    return issues, suggestions
+
+
+# ─── Rewrite examples ────────────────────────────────────────────────
+
+def _build_rewrite_examples(
+        missing_terms: List[str],
+        jd_text: str = "",
+) -> List[Dict]:
+    """
+    Tạo 3 ví dụ rewrite cụ thể cho từng section.
+    """
+    focus = missing_terms[:3]
+    if not focus:
+        return []
+
+    joined = ", ".join(focus)
+    jd_domain = "backend systems"
+    if "react" in jd_text.lower() or "frontend" in jd_text.lower():
+        jd_domain = "frontend applications"
+    elif "data" in jd_text.lower() or "ml" in jd_text.lower():
+        jd_domain = "data pipelines"
+    elif "mobile" in jd_text.lower() or "android" in jd_text.lower():
+        jd_domain = "mobile applications"
+
+    return [
+        {
+            "target_section": "Experience",
+            "label": "Strong experience bullet",
+            "template": (
+                f"Developed [feature/module] for [system] using {joined}, "
+                f"improving [metric] by [X%] and supporting [N] users/requests."
+            ),
+        },
+        {
+            "target_section": "Projects",
+            "label": "Project bullet with impact",
+            "template": (
+                f"Built [project name] — a {jd_domain} leveraging {joined}. "
+                f"Implemented [key feature], deployed on [platform], "
+                f"achieving [measurable result]."
+            ),
+        },
+        {
+            "target_section": "Summary",
+            "label": "Professional summary opener",
+            "template": (
+                f"Software Engineer with [X] years of experience in {jd_domain}, "
+                f"specializing in {joined}. "
+                f"Track record of delivering [outcome] in [context]."
+            ),
+        },
+    ]
+
+
+# ─── Main Entry Point ────────────────────────────────────────────────
+
+def match_cv_to_jd(
+        cv_text: str,
+        jd_text: str,
+        parsed_cv: dict = None,
+        use_semantic: bool = True,
+        use_suggestion_engine: bool = True,
+) -> dict:
+    """
+    Main matching function — multi-layer pipeline.
+
+    Args:
+        cv_text: raw CV text
+        jd_text: raw JD text
+        parsed_cv: output của parse_sections() — dict với key "sections"
+        use_semantic: có dùng sentence-transformers không
+        use_suggestion_engine: có gọi Anthropic API không
+
+    Returns structured dict với đầy đủ scores, issues, suggestions.
+
+    Test case:
+        Input CV có: Python, Django, PostgreSQL, Git
+        Input JD yêu cầu: Python, Django, Docker, AWS, PostgreSQL, Redis
+
+        Expected output:
+        {
+            "match_score": ~55-65,
+            "skills": {
+                "missing_required": ["docker", "aws", "redis"],
+                "required_coverage_pct": 50.0,  # 3/6 matched
+                ...
+            },
+            "issues": [
+                {"code": "missing_required_skills", "severity": "high", ...},
+                ...
+            ],
+            "score_breakdown": {
+                "skill_score": ~50.0,
+                "semantic_score": ~40-60,
+                "keyword_score": ~45.0,
+                "experience_score": ~50.0,
+                "structure_score": ~70.0,
+            }
+        }
+    """
+    # Normalize input
+    cv_sections = {}
+    if isinstance(parsed_cv, dict):
+        cv_sections = parsed_cv.get("sections", {})
+
+    # Extract skills
+    cv_skill_info = extract_skills(cv_text)
+    cv_skills = set(cv_skill_info.get("skills", []))
+    jd_skill_info = _extract_jd_skills(jd_text)
+    required_skills = set(jd_skill_info["required"])
+    preferred_skills = set(jd_skill_info["preferred"])
+
+    # ── Layer 1: Skill Score ──
+    skill_score, skill_detail = _compute_skill_score(
+        cv_skills, required_skills, preferred_skills
     )
 
+    # ── Layer 2: Semantic Score ──
+    semantic_score, semantic_detail = (
+        _compute_semantic_score(cv_sections, jd_text)
+        if use_semantic
+        else (0.0, {"status": "disabled"})
+    )
+
+    # ── Layer 3: Keyword Score ──
+    keyword_score, keyword_detail = _compute_keyword_score(cv_text, jd_text)
+
+    # ── Layer 4: Experience Score ──
+    experience_score, experience_detail = _compute_experience_score(
+        cv_sections, cv_text, jd_text
+    )
+
+    # ── Layer 5: Structure / Bullet Quality Score ──
+    structure_score, structure_detail = _compute_structure_score(
+        cv_sections, cv_skills, required_skills
+    )
+
+    # ── Final Score ──
+    # Nếu semantic available, dùng 5-layer; không thì rebalance
+    if SEMANTIC_AVAILABLE and use_semantic and semantic_score > 0:
+        final_score = (
+                skill_score * 0.35
+                + semantic_score * 0.25
+                + keyword_score * 0.15
+                + experience_score * 0.15
+                + structure_score * 0.10
+        )
+    else:
+        # Không có semantic → phân bổ lại weight
+        final_score = (
+                skill_score * 0.45
+                + keyword_score * 0.20
+                + experience_score * 0.20
+                + structure_score * 0.15
+        )
+
+    # ── Generate Issues & Suggestions ──
+    issues, suggestions = _generate_errors_and_suggestions(
+        skill_detail=skill_detail,
+        keyword_detail=keyword_detail,
+        experience_detail=experience_detail,
+        structure_detail=structure_detail,
+        semantic_detail=semantic_detail,
+        cv_sections=cv_sections,
+        jd_text=jd_text,
+        use_suggestion_engine=use_suggestion_engine,
+    )
+
+    # ── Rewrite examples ──
+    missing_terms = (
+            skill_detail.get("missing_required", [])[:2]
+            + keyword_detail.get("missing", [])[:2]
+    )
+    rewrite_examples = _build_rewrite_examples(missing_terms, jd_text)
+
     return {
-        "match_score": round(match_score, 2),
+        "match_score": round(final_score, 2),
+        "score_breakdown": {
+            "skill_score": round(skill_score, 2),
+            "semantic_score": round(semantic_score, 2),
+            "keyword_score": round(keyword_score, 2),
+            "experience_score": round(experience_score, 2),
+            "structure_score": round(structure_score, 2),
+        },
         "skills": {
-            "score": round(skill_score, 2),
             "cv_skills": sorted(cv_skills),
             "required_skills": sorted(required_skills),
             "preferred_skills": sorted(preferred_skills),
-            "matched_required": matched_required,
-            "missing_required": missing_required,
-            "matched_preferred": matched_preferred,
-            "missing_preferred": missing_preferred,
+            **skill_detail,
+            "score": round(skill_score, 2),
         },
-        "keywords": keyword_result,
+        "keywords": {
+            **keyword_detail,
+            "score": round(keyword_score, 2),
+        },
         "experience": {
+            **experience_detail,
             "score": round(experience_score, 2),
-            "responsibility_score": round(responsibility_score, 2),
-            "cv_years": cv_years,
-            "jd_years": jd_years,
-            "years_score": round(years_score, 2),
-            "cv_seniority": seniority_cv,
-            "jd_seniority": seniority_jd,
+        },
+        "semantic": {
+            **semantic_detail,
+            "score": round(semantic_score, 2),
+        },
+        "structure": {
+            **structure_detail,
+            "score": round(structure_score, 2),
         },
         "issues": issues,
         "suggestions": suggestions,
         "rewrite_examples": rewrite_examples,
+        "meta": {
+            "semantic_available": SEMANTIC_AVAILABLE and use_semantic,
+            "suggestion_engine_available": SUGGESTION_ENGINE_AVAILABLE,
+            "cv_skills_count": len(cv_skills),
+            "required_skills_count": len(required_skills),
+        },
     }
-

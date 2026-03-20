@@ -13,7 +13,9 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from src.services.languagetool_checker import check_english_language
 from src.services.report_builder import build_match_report
-
+from flask import send_file
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 doc_bp = Blueprint("documents", __name__, url_prefix="/api")
 
 
