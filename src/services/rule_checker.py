@@ -1,5 +1,3 @@
-# src/services/rule_checker.py
-
 import re
 from typing import Dict, List
 

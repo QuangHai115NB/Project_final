@@ -1,5 +1,3 @@
-# src/services/report_builder.py
-
 from typing import Any, Dict, List
 
 from src.data.rules_config import SCORE_WEIGHTS

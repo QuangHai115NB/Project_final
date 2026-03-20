@@ -1,5 +1,3 @@
-# src/services/section_parser.py
-
 import re
 from src.data.rules_config import SECTION_HEADERS, REQUIRED_CV_SECTIONS
 from src.services.text_preprocess import clean_text

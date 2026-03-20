@@ -1,4 +1,3 @@
-# src/data/rules_config.py
 
 REQUIRED_CV_SECTIONS = ["Summary", "Skills", "Experience", "Education"]
 RECOMMENDED_CV_SECTIONS = ["Projects", "Certifications"]

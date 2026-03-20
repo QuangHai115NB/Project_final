@@ -44,8 +44,8 @@ SKILL_TAXONOMY = {
     },
     "database": {
         "mysql": ["mysql"],
-        "postgresql": ["postgresql", "postgres", "postgre sql"],
-        "mongodb": ["mongodb", "mongo db"],
+        "postgresql": ["postgresql", "postgres", "postgre sql", "postge"],
+        "mongodb": ["mongodb", "mongo db","mongo"],
         "redis": ["redis"],
         "sqlite": ["sqlite"],
         "oracle": ["oracle"],
@@ -55,12 +55,13 @@ SKILL_TAXONOMY = {
     },
     "cloud_devops": {
         "aws": ["aws", "amazon web services"],
+        "lambda": ["lambda"],
         "azure": ["azure"],
         "gcp": ["gcp", "google cloud", "google cloud platform"],
-        "docker": ["docker"],
+        "docker": ["docker","docker compose"],
         "kubernetes": ["kubernetes", "k8s"],
         "jenkins": ["jenkins"],
-        "git": ["git"],
+        "git": ["git","github"],
         "github actions": ["github actions"],
         "gitlab ci": ["gitlab ci", "gitlab-ci"],
         "terraform": ["terraform"],
@@ -85,8 +86,8 @@ SKILL_TAXONOMY = {
         "scikit-learn": ["scikit-learn", "sklearn"],
         "tensorflow": ["tensorflow"],
         "pytorch": ["pytorch", "torch"],
-        "nlp": ["nlp", "natural language processing"],
-        "llm": ["llm", "large language model", "large language models"],
+        "nlp": ["nlp", "natural language processing","text mining","word2vec","bert"],
+        "llm": ["llm", "large language model", "large language models","openai","gpt","gemini","langchain","llama","claude","copilot studio"],
         "rag": ["rag", "retrieval augmented generation", "retrieval-augmented generation"],
     },
     "mobile": {
@@ -94,6 +95,36 @@ SKILL_TAXONOMY = {
         "flutter": ["flutter"],
         "react native": ["react native"],
         "ios": ["ios"],
+    },
+    "tools_management": {
+        "jira": ["jira", "atlassian jira"],
+        "confluence": ["confluence"],
+        "trello": ["trello"],
+        "slack": ["slack"],
+        "figma": ["figma"],
+        "agile": ["agile", "scrum", "kanban"],
+    },
+    "testing_tools": {
+        "katalon": ["katalon", "katalon studio"],
+        "playwright": ["playwright"],
+        "cypress": ["cypress"],
+        "jmeter": ["jmeter"],
+        "appium": ["appium"],
+    },
+    "architectures_concepts": {
+        "microservices": ["microservices", "microservice architecture"],
+        "restful": ["restful", "rest api", "restful api"],
+        "graphql": ["graphql"],
+        "mvc": ["mvc"],
+        "oop": ["oop", "object oriented programming"],
+        "solid": ["solid principles"],
+        "clean code": ["clean code"],
+    },
+    "others": {
+        "sap": ["sap"],
+        "power bi": ["power bi", "pbi"],
+        "tableau": ["tableau"],
+        "excel": ["excel", "vba", "spreadsheet"]
     }
 }
 

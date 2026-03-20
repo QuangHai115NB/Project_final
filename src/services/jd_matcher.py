@@ -15,7 +15,6 @@ from src.data.rules_config import (
 from src.data.skills_taxonomy import extract_skills
 from src.services.text_preprocess import normalize_for_matching, split_lines
 
-
 def _safe_ratio(numerator: int, denominator: int) -> float:
     if denominator <= 0:
         return 1.0
@@ -326,3 +325,4 @@ def match_cv_to_jd(cv_text: str, jd_text: str, parsed_cv: dict = None) -> dict:
         "suggestions": suggestions,
         "rewrite_examples": rewrite_examples,
     }
+
