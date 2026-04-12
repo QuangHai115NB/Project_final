@@ -13,6 +13,7 @@ import json  # Để xử lý JSON cho report nếu cần
 from src.services.languagetool_checker import check_english_language
 from src.services.report_builder import build_match_report
 from flask import send_file
+from src.services.report_docx_generator import generate_match_report_docx
 doc_bp = Blueprint("documents", __name__, url_prefix="/api")
 
 
@@ -344,6 +345,156 @@ def delete_jd(jd_id):
         return jsonify({"message": "JD deleted successfully"}), 200
     except Exception as e:
         db.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+# --- DOWNLOAD MATCH REPORT AS WORD (.docx) ---
+
+@doc_bp.get("/matches/download/<match_id>")
+@require_auth
+def download_match_report(match_id):
+    """
+    Tải báo cáo so khớp CV-JD dưới dạng file Word (.docx).
+
+    Header: Authorization: Bearer <access_token>
+    Response: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    """
+    import io
+    from datetime import datetime
+
+    db = SessionLocal()
+    try:
+        # Lấy match record kèm CV, JD
+        match_record = db.query(MatchHistory).filter(
+            MatchHistory.id == match_id,
+            MatchHistory.user_id == g.user_id
+        ).first()
+
+        if not match_record:
+            return jsonify({"error": "Match not found hoặc bạn không có quyền truy cập"}), 404
+
+        # Parse report JSON
+        try:
+            report_json = json.loads(match_record.report_json)
+        except (json.JSONDecodeError, TypeError):
+            return jsonify({"error": "Report data bị lỗi, vui lòng tạo lại match"}), 500
+
+        # Generate DOCX
+        docx_bytes = generate_match_report_docx(match_record, report_json)
+
+        # Tạo filename đẹp
+        cv_title = report_json.get("summary", {}).get("cv_title", f"CV-{match_record.cv_id}")
+        jd_title = report_json.get("summary", {}).get("jd_title", f"JD-{match_record.jd_id}")
+        date_str = match_record.created_at.strftime("%Y%m%d") if match_record.created_at else ""
+        safe_name = secure_filename(f"{cv_title}_vs_{jd_title}_{date_str}.docx")
+        if len(safe_name) > 200:
+            safe_name = f"match_report_{match_record.id}.docx"
+
+        return send_file(
+            io.BytesIO(docx_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name=safe_name,
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Lỗi khi tạo file Word: {str(e)}"}), 500
+    finally:
+        db.close()
+
+
+# --- GET MATCH HISTORY LIST ---
+
+@doc_bp.get("/matches")
+@require_auth
+def list_matches():
+    """
+    Lấy danh sách lịch sử so khớp của user hiện tại.
+
+    Header: Authorization: Bearer <access_token>
+    Query params (optional):
+        limit: int (default 20)
+        offset: int (default 0)
+    """
+    limit = request.args.get("limit", 20, type=int)
+    offset = request.args.get("offset", 0, type=int)
+
+    db = SessionLocal()
+    try:
+        matches = db.query(
+            MatchHistory.id,
+            MatchHistory.similarity_score,
+            MatchHistory.created_at,
+            CVDocument.title.label("cv_title"),
+            JDDocument.title.label("jd_title"),
+        ).join(
+            CVDocument, MatchHistory.cv_id == CVDocument.id
+        ).join(
+            JDDocument, MatchHistory.jd_id == JDDocument.id
+        ).filter(
+            MatchHistory.user_id == g.user_id
+        ).order_by(
+            MatchHistory.created_at.desc()
+        ).offset(offset).limit(limit).all()
+
+        return jsonify({
+            "matches": [
+                {
+                    "id": m.id,
+                    "cv_title": m.cv_title,
+                    "jd_title": m.jd_title,
+                    "similarity_score": float(m.similarity_score) if m.similarity_score else 0,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in matches
+            ]
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+# --- GET SINGLE MATCH DETAIL ---
+
+@doc_bp.get("/matches/<match_id>")
+@require_auth
+def get_match_detail(match_id):
+    """
+    Lấy chi tiết một báo cáo match (report JSON đầy đủ).
+
+    Header: Authorization: Bearer <access_token>
+    """
+    db = SessionLocal()
+    try:
+        match_record = db.query(MatchHistory).filter(
+            MatchHistory.id == match_id,
+            MatchHistory.user_id == g.user_id
+        ).first()
+
+        if not match_record:
+            return jsonify({"error": "Match not found hoặc bạn không có quyền truy cập"}), 404
+
+        try:
+            report_json = json.loads(match_record.report_json)
+        except (json.JSONDecodeError, TypeError):
+            return jsonify({"error": "Report data bị lỗi"}), 500
+
+        return jsonify({
+            "id": match_record.id,
+            "cv_id": match_record.cv_id,
+            "jd_id": match_record.jd_id,
+            "similarity_score": float(match_record.similarity_score) if match_record.similarity_score else 0,
+            "created_at": match_record.created_at.isoformat() if match_record.created_at else None,
+            "report": report_json,
+        }), 200
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
         db.close()
