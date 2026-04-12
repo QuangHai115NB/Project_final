@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from src.db.database import Base
 
@@ -9,6 +9,11 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
+
+    password_hash = Column(String(255), nullable=False)
+    is_verified = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -17,6 +22,20 @@ class User(Base):
     jds = relationship("JDDocument", back_populates="user", cascade="all, delete-orphan")
     matches = relationship("MatchHistory", back_populates="user", cascade="all, delete-orphan")
 
+    # Token
+    tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+
+class RefreshToken(Base):
+    """Luu refresh token de ho tro logout va revoke"""
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    token_hash = Column(String(255),unique=True ,nullable=False, index=True)
+    is_revoked = Column(Boolean, default=False, nullable= False)
+    expires_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="tokens")
 
 class CVDocument(Base):
     __tablename__ = "cv_documents"
