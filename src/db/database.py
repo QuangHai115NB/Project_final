@@ -10,8 +10,19 @@ load_dotenv()
 # Lấy chuỗi kết nối từ .env
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Tạo kết nối với PostgreSQL Supabase
-engine = create_engine(DATABASE_URL, echo=True, future=True)
+# Điều khiển echo qua env variable (SQL_ECHO=true để bật logging SQL)
+SQL_ECHO = os.getenv("SQL_ECHO", "false").lower() in ("true", "1", "yes")
+
+# Tạo kết nối với PostgreSQL Supabase với connection pool tuning
+engine = create_engine(
+    DATABASE_URL,
+    echo=SQL_ECHO,
+    future=True,
+    pool_size=20,
+    max_overflow=30,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
 
 # Tạo SessionLocal để thao tác với database
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

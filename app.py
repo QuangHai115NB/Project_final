@@ -8,6 +8,8 @@ def create_app():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev")
     app.config["UPLOAD_DIR"] = os.getenv("UPLOAD_DIR", "uploads")
+    # Giới hạn kích thước upload file: 5MB
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
     # Khởi tạo và kiểm tra kết nối DB
     from src.db.database import init_db

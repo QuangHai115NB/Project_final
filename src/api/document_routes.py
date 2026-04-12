@@ -1,6 +1,7 @@
 import os
-from flask import Blueprint, request, jsonify, current_app, make_response
+from flask import Blueprint, request, jsonify, current_app, make_response, g
 from werkzeug.utils import secure_filename
+from src.core.dependencies import require_auth
 from src.db.database import SessionLocal
 from src.db.models import User, CVDocument, JDDocument, MatchHistory
 from src.services.pdf_extractor import extract_text_from_pdf
@@ -9,13 +10,9 @@ from src.services.section_parser import parse_sections
 from src.services.rule_checker import run_rule_checks
 from src.services.jd_matcher import match_cv_to_jd
 import json  # Để xử lý JSON cho report nếu cần
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from src.services.languagetool_checker import check_english_language
 from src.services.report_builder import build_match_report
 from flask import send_file
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 doc_bp = Blueprint("documents", __name__, url_prefix="/api")
 
 
@@ -60,15 +57,13 @@ def _ensure_user_exists(db, user_id):
 # --- API ROUTES ---
 
 @doc_bp.post("/cvs/upload")
+@require_auth
 def upload_cv():
     db = SessionLocal()
     try:
-        # Lấy user_id dưới dạng Integer
-        user_id = request.form.get("user_id", type=int)
+        # Lấy user_id từ token đã xác thực, KHÔNG từ request
+        user_id = g.user_id
         title = request.form.get("title", "").strip()
-
-        if not user_id:
-            return jsonify({"error": "user_id is required"}), 400
 
         # KIỂM TRA QUAN TRỌNG: User phải có trong bảng users
         if not _ensure_user_exists(db, user_id):
@@ -106,15 +101,14 @@ def upload_cv():
 
 
 @doc_bp.post("/jds/upload")
+@require_auth
 def upload_jd():
     db = SessionLocal()
     try:
-        user_id = request.form.get("user_id", type=int)
+        # Lấy user_id từ token đã xác thực
+        user_id = g.user_id
         title = request.form.get("title", "").strip()
         jd_text = request.form.get("jd_text", "").strip()
-
-        if not user_id:
-            return jsonify({"error": "user_id is required"}), 400
 
         if not _ensure_user_exists(db, user_id):
             return jsonify({"error": f"User ID {user_id} không tồn tại."}), 404
@@ -155,11 +149,13 @@ def upload_jd():
 
 
 @doc_bp.post("/matches")
+@require_auth
 def create_match():
     db = SessionLocal()
     try:
         body = request.get_json(silent=True) or {}
-        user_id = body.get("user_id")
+        # Lấy user_id từ token đã xác thực
+        user_id = g.user_id
         cv_id = body.get("cv_id")
         jd_id = body.get("jd_id")
 
@@ -230,12 +226,15 @@ def create_match():
         db.close()
 
 @doc_bp.put("/csv/update/<cv_id>")
+@require_auth
 def update_csv(cv_id):
     db = SessionLocal()
     try:
         cv_record = db.query(CVDocument).filter(CVDocument.id == cv_id).first()
         if not cv_record:
             return jsonify({"error": "CV not found"}), 404
+        if cv_record.user_id != g.user_id:
+            return jsonify({"error": "Unauthorized - Bạn không có quyền sửa CV này"}), 403
 
         cv_record.title = request.json.get("title", cv_record.title)
         cv_record.content_text = request.json.get("content_text", cv_record.content_text)
@@ -252,12 +251,15 @@ def update_csv(cv_id):
 
 # API để sửa CV
 @doc_bp.put("/cvs/update/<cv_id>")
+@require_auth
 def update_cv(cv_id):
     db = SessionLocal()
     try:
         cv_record = db.query(CVDocument).filter(CVDocument.id == cv_id).first()
         if not cv_record:
             return jsonify({"error": "CV not found"}), 404
+        if cv_record.user_id != g.user_id:
+            return jsonify({"error": "Unauthorized - Bạn không có quyền sửa CV này"}), 403
 
         # Update dữ liệu CV
         cv_record.title = request.json.get("title", cv_record.title)
@@ -276,12 +278,15 @@ def update_cv(cv_id):
 
 # API để xóa CV
 @doc_bp.delete("/cvs/delete/<cv_id>")
+@require_auth
 def delete_cv(cv_id):
     db = SessionLocal()
     try:
         cv_record = db.query(CVDocument).filter(CVDocument.id == cv_id).first()
         if not cv_record:
             return jsonify({"error": "CV not found"}), 404
+        if cv_record.user_id != g.user_id:
+            return jsonify({"error": "Unauthorized - Bạn không có quyền xóa CV này"}), 403
 
         db.delete(cv_record)
         db.commit()
@@ -296,12 +301,15 @@ def delete_cv(cv_id):
 
 # API để sửa JD
 @doc_bp.put("/jds/update/<jd_id>")
+@require_auth
 def update_jd(jd_id):
     db = SessionLocal()
     try:
         jd_record = db.query(JDDocument).filter(JDDocument.id == jd_id).first()
         if not jd_record:
             return jsonify({"error": "JD not found"}), 404
+        if jd_record.user_id != g.user_id:
+            return jsonify({"error": "Unauthorized - Bạn không có quyền sửa JD này"}), 403
 
         # Update dữ liệu JD
         jd_record.title = request.json.get("title", jd_record.title)
@@ -320,12 +328,15 @@ def update_jd(jd_id):
 
 # API để xóa JD
 @doc_bp.delete("/jds/delete/<jd_id>")
+@require_auth
 def delete_jd(jd_id):
     db = SessionLocal()
     try:
         jd_record = db.query(JDDocument).filter(JDDocument.id == jd_id).first()
         if not jd_record:
             return jsonify({"error": "JD not found"}), 404
+        if jd_record.user_id != g.user_id:
+            return jsonify({"error": "Unauthorized - Bạn không có quyền xóa JD này"}), 403
 
         db.delete(jd_record)
         db.commit()

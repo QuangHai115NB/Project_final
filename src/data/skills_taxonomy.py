@@ -79,6 +79,11 @@ SKILL_TAXONOMY = {
         "rest api": ["rest api", "restful api", "restful services"],
         "unit testing": ["unit testing", "unit test"],
         "integration testing": ["integration testing", "integration test"],
+        "katalon": ["katalon", "katalon studio"],
+        "playwright": ["playwright"],
+        "cypress": ["cypress"],
+        "jmeter": ["jmeter"],
+        "appium": ["appium"],
     },
     "data_ai": {
         "pandas": ["pandas"],
@@ -103,13 +108,6 @@ SKILL_TAXONOMY = {
         "slack": ["slack"],
         "figma": ["figma"],
         "agile": ["agile", "scrum", "kanban"],
-    },
-    "testing_tools": {
-        "katalon": ["katalon", "katalon studio"],
-        "playwright": ["playwright"],
-        "cypress": ["cypress"],
-        "jmeter": ["jmeter"],
-        "appium": ["appium"],
     },
     "architectures_concepts": {
         "microservices": ["microservices", "microservice architecture"],
