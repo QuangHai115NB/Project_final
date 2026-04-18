@@ -1,3 +1,4 @@
+
 Cách chạy code Flask trong venv
 
   # 1. Di chuyển vào thư mục project
@@ -19,4 +20,5 @@ Cách chạy code Flask trong venv
   🔄 Cách nhanh hơn — Tạo shortcut 1 lệnh
 
   # Chạy 1 lệnh duy nhất (không cần activate trước)
-.venv\Scripts\activate && pip install -r requirements.txt && python app.py
+.venv\Scripts\activate
+python app.py

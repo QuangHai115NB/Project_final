@@ -19,6 +19,7 @@ from src.services.storage import (
     upload_jd as storage_upload_jd,
     delete_cv as storage_delete_cv,
     delete_jd as storage_delete_jd,
+    create_signed_url,
 )
 doc_bp = Blueprint("documents", __name__, url_prefix="/api")
 
@@ -509,6 +510,71 @@ def download_match_report(match_id):
         return jsonify({"error": f"Lỗi khi tạo file Word: {str(e)}"}), 500
     finally:
         db.close()
+
+
+# --- API ROUTES: FILE SERVE (SIGNED URL) ---
+
+@doc_bp.get("/cvs/file/<cv_id>")
+@require_auth
+def get_cv_signed_url(cv_id):
+    """
+    Lấy signed URL để truy cập file CV gốc trên Supabase Storage.
+
+    Returns:
+      { url, expires_in }
+    """
+    db = SessionLocal()
+    try:
+        cv_record = db.query(CVDocument).filter(
+            CVDocument.id == cv_id,
+            CVDocument.user_id == g.user_id,
+        ).first()
+
+        if not cv_record:
+            return jsonify({"error": "CV not found"}), 404
+
+        if not cv_record.storage_path:
+            return jsonify({"error": "CV file not found in storage"}), 404
+
+        url = create_signed_url("cv-uploads", cv_record.storage_path, expires_in=3600)
+        return jsonify({"url": url}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@doc_bp.get("/jds/file/<jd_id>")
+@require_auth
+def get_jd_signed_url(jd_id):
+    """
+    Lấy signed URL để truy cập file JD gốc trên Supabase Storage.
+
+    Returns:
+      { url, expires_in }
+    """
+    db = SessionLocal()
+    try:
+        jd_record = db.query(JDDocument).filter(
+            JDDocument.id == jd_id,
+            JDDocument.user_id == g.user_id,
+        ).first()
+
+        if not jd_record:
+            return jsonify({"error": "JD not found"}), 404
+
+        if not jd_record.storage_path:
+            return jsonify({"error": "JD file not found in storage"}), 404
+
+        url = create_signed_url("jd-uploads", jd_record.storage_path, expires_in=3600)
+        return jsonify({"url": url}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
 
 
 # --- HÀM TRỢ GIÚP (INTERNAL) ---

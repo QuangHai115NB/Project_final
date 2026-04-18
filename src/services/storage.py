@@ -263,6 +263,49 @@ def upload_jd(file_storage, user_id: int) -> Tuple[str, str, str]:
     return storage_url, storage_path, text
 
 
+def create_signed_url(bucket: str, storage_path: str, expires_in: int = 3600) -> str:
+    """
+    Tạo signed URL để truy cập file private trên Supabase Storage.
+
+    Args:
+        bucket: Tên bucket (cv-uploads / jd-uploads)
+        storage_path: Path trong bucket (user_{id}/file.ext)
+        expires_in: Thời gian hết hạn (giây), mặc định 1 giờ
+
+    Returns:
+        Signed URL đầy đủ
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise RuntimeError("SUPABASE_URL và SUPABASE_SERVICE_KEY phải được set trong .env")
+
+    sign_url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}"
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Content-Type": "application/json",
+    }
+    payload = {"path": storage_path, "expiresIn": expires_in}
+
+    response = requests.post(sign_url, json=payload, headers=headers, timeout=15)
+
+    if response.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Tạo signed URL thất bại: {response.status_code} - {response.text}"
+        )
+
+    data = response.json()
+    token_path = data.get("url", "")
+    if not token_path:
+        raise RuntimeError("Supabase không trả về URL — kiểm tra quyền bucket")
+
+    # URL trả về dạng: /storage/v1/object/sign/{bucket}/path?token=...
+    # Hoặc đã là full URL nếu dùng project URL
+    if token_path.startswith("/"):
+        return f"{SUPABASE_URL}{token_path}"
+    # Trường hợp đã là full URL
+    return token_path
+
+
 def delete_cv(storage_path: str) -> bool:
     """Xóa CV file khỏi Supabase Storage."""
     return _delete_file_from_storage(BUCKET_CV, storage_path)

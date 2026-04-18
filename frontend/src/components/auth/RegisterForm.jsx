@@ -1,7 +1,33 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authAPI } from '../../api/auth';
-import { Input, Button } from '../shared';
+import { Button } from '../shared';
+
+function PasswordField({ label, value, onChange, placeholder }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div>
+      <label className="text-sm font-medium text-gray-700 block mb-1">{label}</label>
+      <div className="relative">
+        <input
+          type={show ? 'text' : 'password'}
+          placeholder={placeholder}
+          value={value}
+          onChange={onChange}
+          required
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all hover:border-gray-400 pr-12"
+        />
+        <button
+          type="button"
+          onClick={() => setShow(!show)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none"
+        >
+          {show ? '👁️' : '👁️‍🗨️'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function RegisterForm() {
   const [email, setEmail] = useState('');
@@ -47,9 +73,19 @@ export default function RegisterForm() {
               {error}
             </div>
           )}
-          <Input label="Email" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <Input label="Mật khẩu" type="password" placeholder="Ít nhất 8 ký tự" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          <Input label="Xác nhận mật khẩu" type="password" placeholder="Nhập lại mật khẩu" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
+            <input
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all hover:border-gray-400"
+            />
+          </div>
+          <PasswordField label="Mật khẩu" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ít nhất 8 ký tự" />
+          <PasswordField label="Xác nhận mật khẩu" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Nhập lại mật khẩu" />
           <Button type="submit" loading={loading} className="w-full">
             Đăng ký
           </Button>

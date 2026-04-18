@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { matchAPI } from '../api/auth';
+import axios from 'axios';
 
 export function useMatchReport() {
   const [report, setReport] = useState(null);
@@ -10,11 +10,15 @@ export function useMatchReport() {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await matchAPI.get(matchId);
-      setReport(data);
+      const token = localStorage.getItem('access_token');
+      const { data } = await axios.get(`/api/matches/${matchId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      setReport(data.report ?? data);
       return data;
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to load report');
+      const msg = err.response?.data?.error || 'Không thể tải báo cáo';
+      setError(msg);
       throw err;
     } finally {
       setLoading(false);
@@ -22,12 +26,18 @@ export function useMatchReport() {
   };
 
   const downloadDocx = async (matchId, filename = 'report.docx') => {
-    const { data } = await matchAPI.download(matchId);
-    const url = URL.createObjectURL(new Blob([data]));
+    const token = localStorage.getItem('access_token');
+    const { data: blob } = await axios.get(`/api/matches/download/${matchId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 

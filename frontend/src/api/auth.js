@@ -95,6 +95,13 @@ export const cvAPI = {
   update: (cvId, data) => api.put(`/cvs/update/${cvId}`, data),
 
   delete: (cvId) => api.delete(`/cvs/delete/${cvId}`),
+
+  getSignedUrl: (cvId) => {
+    const token = localStorage.getItem('access_token');
+    return axios.get(`/api/cvs/file/${cvId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
 };
 
 // ── JD API ────────────────────────────────────────────
@@ -116,6 +123,13 @@ export const jdAPI = {
   update: (jdId, data) => api.put(`/jds/update/${jdId}`, data),
 
   delete: (jdId) => api.delete(`/jds/delete/${jdId}`),
+
+  getSignedUrl: (jdId) => {
+    const token = localStorage.getItem('access_token');
+    return axios.get(`/api/jds/file/${jdId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
 };
 
 // ── Match API ──────────────────────────────────────────
