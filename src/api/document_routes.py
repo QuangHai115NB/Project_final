@@ -10,7 +10,6 @@ from src.services.section_parser import parse_sections
 from src.services.rule_checker import run_rule_checks
 from src.services.jd_matcher import match_cv_to_jd
 import json
-from src.services.languagetool_checker import check_english_language
 from src.services.report_builder import build_match_report
 from flask import send_file
 from src.services.report_docx_generator import generate_match_report_docx
@@ -348,7 +347,6 @@ def create_match():
 
         parsed_sections = parse_sections(cv_text)
         rule_report = run_rule_checks(cv_text, parsed_sections)
-        language_report = check_english_language(cv_text)
         jd_report = match_cv_to_jd(cv_text=cv_text, jd_text=jd_text, parsed_cv=parsed_sections)
 
         report = build_match_report(
@@ -358,7 +356,6 @@ def create_match():
             jd_text=jd_text,
             parsed_sections=parsed_sections,
             rule_report=rule_report,
-            language_report=language_report,
             jd_report=jd_report,
         )
 

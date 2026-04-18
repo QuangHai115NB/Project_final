@@ -4,7 +4,6 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Set, Tuple
 
-from rapidfuzz import fuzz
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -12,7 +11,6 @@ from src.data.rules_config import (
     JD_PREFERRED_MARKERS,
     KEYWORD_BLACKLIST,
     MAX_KEYWORDS,
-    SCORE_WEIGHTS,
 )
 from src.data.skills_taxonomy import extract_skills
 from src.services.text_preprocess import normalize_for_matching, split_lines
@@ -55,16 +53,16 @@ def _extract_years_of_experience(text: str) -> int:
 
 def _detect_seniority(text: str) -> str:
     lowered = text.lower()
-    if "intern" in lowered:
-        return "intern"
-    if "junior" in lowered or "fresher" in lowered or "entry" in lowered:
-        return "junior"
-    if "senior" in lowered or "sr." in lowered:
-        return "senior"
-    if any(k in lowered for k in ["lead", "principal", "architect", "staff"]):
+    if re.search(r"\b(lead|principal|architect|staff)\b", lowered):
         return "lead"
-    if any(k in lowered for k in ["mid-level", "mid level", "middle"]):
+    if re.search(r"\b(senior|sr\.)\b", lowered):
+        return "senior"
+    if re.search(r"\b(mid-level|mid level|middle)\b", lowered):
         return "mid"
+    if re.search(r"\b(junior|fresher|entry)\b", lowered):
+        return "junior"
+    if re.search(r"\b(intern|internship)\b", lowered):
+        return "intern"
     return "unknown"
 
 
@@ -191,6 +189,82 @@ def _tfidf_similarity(text_a: str, text_b: str) -> float:
         return float(cosine_similarity(matrix[0:1], matrix[1:2])[0][0]) * 100.0
     except Exception:
         return 0.0
+
+
+def _truncate(text: str, limit: int = 160) -> str:
+    text = re.sub(r"\s+", " ", text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _extract_cv_bullets(cv_sections: Dict[str, str]) -> List[Dict]:
+    """Return candidate bullets with section and ordinal for precise feedback."""
+    bullets = []
+    bullet_markers = ("-", "•", "●", "▪", "*")
+    fallback_markers = ("â€¢", "â—", "â–ª")
+
+    def starts_with_marker(value: str) -> bool:
+        return value.startswith(bullet_markers) or value.startswith(fallback_markers)
+
+    def strip_marker(value: str) -> str:
+        cleaned = value.strip()
+        for marker in bullet_markers + fallback_markers:
+            if cleaned.startswith(marker):
+                return cleaned[len(marker):].strip()
+        return cleaned
+
+    def is_likely_role_heading(value: str) -> bool:
+        return bool(re.search(r"(19|20)\d{2}", value)) and any(
+            marker in value for marker in ("—", "–", "-", "(")
+        )
+
+    def flush(section_name: str, index: int, parts: List[str]):
+        text = _truncate(" ".join(part.strip() for part in parts if part.strip()), 240)
+        if len(text.split()) < 4:
+            return
+        bullets.append({
+            "section": section_name,
+            "bullet_index": index,
+            "excerpt": _truncate(text),
+            "text": text,
+        })
+
+    for section_name in ("Experience", "Projects"):
+        content = cv_sections.get(section_name, "")
+        current_parts = []
+        index = 0
+        for raw_line in content.split("\n"):
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+
+            if starts_with_marker(stripped):
+                if current_parts:
+                    flush(section_name, index, current_parts)
+                index += 1
+                current_parts = [strip_marker(stripped)]
+            elif current_parts:
+                if is_likely_role_heading(stripped):
+                    flush(section_name, index, current_parts)
+                    current_parts = []
+                    continue
+                # PDF extraction often wraps one bullet across multiple lines.
+                current_parts.append(strip_marker(stripped))
+
+        if current_parts:
+            flush(section_name, index, current_parts)
+    return bullets
+
+
+def _evidence_to_details(evidence: List) -> List[str]:
+    details = []
+    for item in evidence or []:
+        if isinstance(item, dict):
+            details.append(str(item.get("excerpt") or item.get("term") or item))
+        else:
+            details.append(str(item))
+    return details
 
 
 # ─── Layer 3: Keyword Matching ───────────────────────────────────────
@@ -322,28 +396,35 @@ def _compute_structure_score(
                 skills_no_evidence.append(skill)
 
     # Bullet analysis
-    exp_text = cv_sections.get("Experience", "") + "\n" + cv_sections.get("Projects", "")
-    bullets = [
-        line.strip(" \t-•●▪*")
-        for line in exp_text.split("\n")
-        if len(line.strip().split()) >= 4
-    ]
+    bullet_items = _extract_cv_bullets(cv_sections)
+    bullets = [item["text"] for item in bullet_items]
 
     metric_pattern = _re.compile(
         r"(\d+%|\d+\+|[$€£]\d+|\d+\s*(users|clients|ms|seconds|apis|services|modules|records|requests))",
         _re.IGNORECASE,
     )
 
-    total = len(bullets)
-    action_count = sum(
-        1 for b in bullets
-        if b.lower().split()[0] in ACTION_VERBS if b.split()
-    )
-    metric_count = sum(1 for b in bullets if metric_pattern.search(b))
-    weak_count = sum(
-        1 for b in bullets
-        if any(b.lower().startswith(p) for p in WEAK_BULLET_PATTERNS)
-    )
+    action_bullets = [
+        item for item in bullet_items
+        if item["text"].split() and item["text"].lower().split()[0] in ACTION_VERBS
+    ]
+    metric_bullets = [
+        item for item in bullet_items
+        if metric_pattern.search(item["text"])
+    ]
+    weak_bullets = [
+        item for item in bullet_items
+        if any(item["text"].lower().startswith(p) for p in WEAK_BULLET_PATTERNS)
+    ]
+    metricless_bullets = [
+        item for item in bullet_items
+        if not metric_pattern.search(item["text"])
+    ]
+
+    total = len(bullet_items)
+    action_count = len(action_bullets)
+    metric_count = len(metric_bullets)
+    weak_count = len(weak_bullets)
 
     penalty = 0
     penalty += len(skills_no_evidence) * 8  # 8 điểm mỗi skill thiếu evidence
@@ -368,6 +449,32 @@ def _compute_structure_score(
         "action_verb_count": action_count,
         "metric_count": metric_count,
         "weak_bullet_count": weak_count,
+        "weak_bullet_excerpts": [
+            {
+                "section": item["section"],
+                "bullet_index": item["bullet_index"],
+                "excerpt": item["excerpt"],
+                "reason": "Starts with a weak/passive phrase.",
+            }
+            for item in weak_bullets
+        ],
+        "metric_bullet_excerpts": [
+            {
+                "section": item["section"],
+                "bullet_index": item["bullet_index"],
+                "excerpt": item["excerpt"],
+            }
+            for item in metric_bullets
+        ],
+        "metricless_bullet_excerpts": [
+            {
+                "section": item["section"],
+                "bullet_index": item["bullet_index"],
+                "excerpt": item["excerpt"],
+                "reason": "No measurable result or scale found.",
+            }
+            for item in metricless_bullets[:5]
+        ],
         "skills_no_evidence": skills_no_evidence[:5],
         "penalty_applied": penalty,
     }
@@ -454,30 +561,37 @@ def _generate_errors_and_suggestions(
         })
 
     # --- Weak bullets ---
-    if structure_detail.get("weak_bullet_count", 0) > 0:
+    weak_excerpts = structure_detail.get("weak_bullet_excerpts", [])
+    weak_count = structure_detail.get("weak_bullet_count", 0)
+    if weak_count > 0:
         issues.append({
             "code": "weak_bullets",
             "error_type": "language_quality",
             "severity": "medium",
             "section": "Experience / Projects",
-            "evidence": [f"{structure_detail['weak_bullet_count']} bullets bắt đầu bằng cụm từ thụ động"],
+            "evidence": weak_excerpts[:3],   # trích dẫn bullet cụ thể
             "explanation": (
-                "Bullets bắt đầu bằng 'Responsible for', 'Worked on', 'Helped with'... "
-                "thể hiện vai trò bị động, không thuyết phục."
+                f"{weak_count} bullets bắt đầu bằng cụm từ thụ động "
+                f"('Responsible for', 'Worked on', 'Helped with'...). "
+                f"Recruiter sẽ nghi ngờ tính chủ động trong công việc."
             ),
         })
 
     # --- Missing metrics ---
-    if structure_detail.get("metric_count", 0) == 0 and structure_detail.get("total_bullets", 0) > 0:
+    metric_count = structure_detail.get("metric_count", 0)
+    total_bullets = structure_detail.get("total_bullets", 0)
+    metricless_excerpts = structure_detail.get("metricless_bullet_excerpts", [])
+    if total_bullets > 0 and metric_count == 0:
         issues.append({
             "code": "missing_metrics",
             "error_type": "content_quality",
             "severity": "medium",
             "section": "Experience / Projects",
-            "evidence": ["0 bullets có số liệu đo lường"],
+            "evidence": metricless_excerpts[:3] or ["Không có bullet nào chứa số liệu đo lường."],
             "explanation": (
-                "Không có bullet nào chứa số liệu (%, số user, số API, thời gian...). "
-                "CV IT mạnh cần ít nhất 2-3 bullets có con số cụ thể."
+                f"Không có bullet nào trong {total_bullets} bullets chứa số liệu cụ thể "
+                f"(%, số user, số API, thời gian...). "
+                f"CV IT mạnh cần ít nhất 2-3 bullets có con số cụ thể."
             ),
         })
 
@@ -529,6 +643,10 @@ def _generate_errors_and_suggestions(
                 f"bởi bất kỳ bullet nào trong Experience/Projects."
             ),
         })
+
+    # Keep compatibility with suggestion_engine, which reads details.
+    for issue in issues:
+        issue.setdefault("details", _evidence_to_details(issue.get("evidence", [])))
 
     # --- Generate suggested_fix cho từng issue ---
     if use_suggestion_engine and SUGGESTION_ENGINE_AVAILABLE:

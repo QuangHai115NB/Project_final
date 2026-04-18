@@ -89,7 +89,33 @@ SCORE_WEIGHTS = {
     "skill": 40,
     "keyword": 20,
     "experience": 15,
-    "language": 10,
+}
+
+# Final report weights. These are applied directly to score_breakdown in
+# report_builder, so final_score can be recomputed from the returned JSON.
+REPORT_SCORE_WEIGHTS = {
+    "section_score": 10,
+    "skill_score": 30,
+    "semantic_score": 15,
+    "keyword_score": 15,
+    "experience_score": 15,
+    "jd_structure_score": 15,
+}
+
+# ── Score labels & UI thresholds ──────────────────────────────
+# Dùng CHUNG cho backend (label) và frontend (màu thanh).
+# ≥ 70: Good → green   |  55-69: Fair → amber  |  < 55: Weak → red
+SCORE_LABELS = [
+    (85, "Excellent"),
+    (70, "Good"),
+    (55, "Fair"),
+    (0,  "Weak"),
+]
+
+SCORE_COLOR_THRESHOLDS = {
+    "green":  70,   # ≥70 → green
+    "amber":  55,   # 55-69 → amber
+    "red":    0,    # <55 → red
 }
 
 MAX_KEYWORDS = 20

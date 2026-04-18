@@ -99,11 +99,28 @@ def _add_horizontal_rule(doc, color_hex="2563EB", thickness=12):
 
 def _score_to_color(score: float) -> RGBColor:
     """Return color based on score range."""
-    if score >= 75:
+    if score >= 70:
         return COLOR_SUCCESS
     elif score >= 55:
         return COLOR_WARNING
     return COLOR_DANGER
+
+
+def _format_evidence_item(item) -> str:
+    if isinstance(item, dict):
+        location = " - ".join(
+            part for part in [
+                str(item.get("section", "")) if item.get("section") else "",
+                f"bullet #{item.get('bullet_index')}" if item.get("bullet_index") else "",
+            ]
+            if part
+        )
+        excerpt = item.get("excerpt") or item.get("jd_line") or str(item)
+        reason = item.get("reason", "")
+        prefix = f"{location}: " if location else ""
+        suffix = f" ({reason})" if reason else ""
+        return f"{prefix}{excerpt}{suffix}"
+    return str(item)
 
 
 def _score_to_label(score: float) -> str:
@@ -186,7 +203,7 @@ def _add_overall_score(doc: Document, final_score: float, label: str):
     cell = table.rows[0].cells[0]
 
     # Background color based on score
-    if final_score >= 75:
+    if final_score >= 70:
         bg = "DCFCE7"  # green light
         score_color_hex = "10B981"
     elif final_score >= 55:
@@ -231,7 +248,6 @@ def _add_score_breakdown(doc: Document, breakdown: dict):
         ("Keyword Match",    breakdown.get("keyword_score", 0)),
         ("Experience",       breakdown.get("experience_score", 0)),
         ("Structure",        breakdown.get("jd_structure_score", breakdown.get("structure_score", 0))),
-        ("Language",         breakdown.get("language_score", 0)),
     ]
 
     table = doc.add_table(rows=len(scores), cols=3)
@@ -400,7 +416,7 @@ def _add_issues(doc: Document, issues: list):
         # Evidence
         if evidence:
             ev_p = cell.add_paragraph()
-            ev_r = ev_p.add_run("Evidence: " + ", ".join(str(e) for e in evidence[:3]))
+            ev_r = ev_p.add_run("Evidence: " + "; ".join(_format_evidence_item(e) for e in evidence[:3]))
             ev_r.font.size = Pt(9)
             ev_r.italic = True
             ev_r.font.color.rgb = COLOR_GRAY_MEDIUM

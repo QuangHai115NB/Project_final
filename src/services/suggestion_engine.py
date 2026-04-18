@@ -415,11 +415,6 @@ def _get_rule_based_fix(code: str, details: list, section: str) -> str:
             "Độ dài CV chưa tối ưu. CV IT nên có 400-700 từ (1-2 trang). "
             "Tập trung vào kinh nghiệm 3-5 năm gần nhất và dự án liên quan JD."
         ),
-        "language_issues": (
-            "Kiểm tra lại ngữ pháp, chính tả. Dùng Grammarly hoặc LanguageTool. "
-            "Đặc biệt chú ý: consistent tense trong Experience (thường dùng past tense), "
-            "capitalize đúng tên công nghệ (Python, JavaScript, không phải python, javascript)."
-        ),
     }
     return fixes.get(code, "Xem xét lại phần này và cải thiện theo gợi ý trong báo cáo.")
 
