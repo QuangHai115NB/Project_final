@@ -90,10 +90,6 @@ export const cvAPI = {
     });
   },
 
-  get: (cvId) => api.get(`/cvs/${cvId}`),
-
-  update: (cvId, data) => api.put(`/cvs/update/${cvId}`, data),
-
   delete: (cvId) => api.delete(`/cvs/delete/${cvId}`),
 
   getSignedUrl: (cvId) => {
@@ -117,10 +113,6 @@ export const jdAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-
-  get: (jdId) => api.get(`/jds/${jdId}`),
-
-  update: (jdId, data) => api.put(`/jds/update/${jdId}`, data),
 
   delete: (jdId) => api.delete(`/jds/delete/${jdId}`),
 
