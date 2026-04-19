@@ -278,13 +278,13 @@ def create_signed_url(bucket: str, storage_path: str, expires_in: int = 3600) ->
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         raise RuntimeError("SUPABASE_URL và SUPABASE_SERVICE_KEY phải được set trong .env")
 
-    sign_url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}"
+    sign_url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{storage_path}"
     headers = {
         "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
         "apikey": SUPABASE_SERVICE_KEY,
         "Content-Type": "application/json",
     }
-    payload = {"path": storage_path, "expiresIn": expires_in}
+    payload = {"expiresIn": expires_in}
 
     response = requests.post(sign_url, json=payload, headers=headers, timeout=15)
 
