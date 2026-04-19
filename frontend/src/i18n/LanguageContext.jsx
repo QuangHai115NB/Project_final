@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Languages } from 'lucide-react';
 import { translations } from './translations';
 
 const LanguageContext = createContext(null);
@@ -49,12 +50,15 @@ export function useLanguage() {
 export function LanguageToggle({ className = '' }) {
   const { language, setLanguage } = useLanguage();
   const labels = {
-    vi: { flag: '🇻🇳', text: 'VI' },
-    en: { flag: '🇺🇸', text: 'EN' },
+    vi: { short: 'VI', name: 'Vietnamese' },
+    en: { short: 'EN', name: 'English' },
   };
 
   return (
     <div className={`inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900 ${className}`}>
+      <span className="flex items-center px-2 text-gray-400 dark:text-slate-500" aria-hidden="true">
+        <Languages size={15} />
+      </span>
       {['vi', 'en'].map((lang) => (
         <button
           key={lang}
@@ -67,8 +71,8 @@ export function LanguageToggle({ className = '' }) {
           }`}
           title={lang === 'vi' ? 'Tiếng Việt' : 'English'}
         >
-          <span className="text-base leading-none" aria-hidden="true">{labels[lang].flag}</span>
-          <span>{labels[lang].text}</span>
+          <span>{labels[lang].short}</span>
+          <span className="hidden sm:inline">{labels[lang].name}</span>
         </button>
       ))}
     </div>

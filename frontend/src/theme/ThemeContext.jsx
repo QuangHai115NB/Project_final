@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Moon, Sun } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
 const ThemeContext = createContext(null);
@@ -50,7 +51,7 @@ export function ThemeToggle({ className = '' }) {
       aria-label={isDark ? t('theme.switchLight') : t('theme.switchDark')}
       title={isDark ? t('theme.switchLight') : t('theme.switchDark')}
     >
-      <span className="text-base leading-none" aria-hidden="true">{isDark ? '🌙' : '☀️'}</span>
+      {isDark ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}
       <span className="hidden sm:inline">{isDark ? t('theme.dark') : t('theme.light')}</span>
     </button>
   );

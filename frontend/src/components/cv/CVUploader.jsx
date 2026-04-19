@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { Paperclip } from 'lucide-react';
 import { cvAPI } from '../../api/auth';
 import { Button, Card } from '../shared';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -70,7 +71,9 @@ export default function CVUploader({ onSuccess }) {
         `}
       >
         <input ref={fileRef} type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
-        <div className="text-4xl mb-2">📎</div>
+        <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-blue-700 dark:bg-sky-950/45 dark:text-sky-200">
+          <Paperclip size={24} aria-hidden="true" />
+        </div>
         {file ? (
           <div>
             <p className="font-semibold text-primary">{file.name}</p>

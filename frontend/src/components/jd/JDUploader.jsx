@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { Paperclip } from 'lucide-react';
 import { jdAPI } from '../../api/auth';
 import { Button, Card } from '../shared';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -68,7 +69,9 @@ export default function JDUploader({ onSuccess }) {
           className="cursor-pointer rounded-xl border-2 border-dashed border-gray-300 p-8 text-center transition-all hover:border-primary/50 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800/70"
         >
           <input ref={fileRef} type="file" accept=".pdf,.txt" onChange={(e) => setFile(e.target.files[0])} className="hidden" />
-          <div className="text-4xl mb-2">📎</div>
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            <Paperclip size={24} aria-hidden="true" />
+          </div>
           {file ? (
             <p className="font-semibold text-primary">{file.name}</p>
           ) : (

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { LockKeyhole } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../shared';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -34,7 +35,7 @@ export default function LoginForm() {
     <AuthShell mode="login">
       <div className="mb-7 text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-xl text-white shadow-lg shadow-blue-600/20">
-          🔐
+          <LockKeyhole size={22} aria-hidden="true" />
         </div>
         <h1 className="text-3xl font-black text-gray-950 dark:text-white">CV Reviewer</h1>
         <p className="mt-2 text-gray-500 dark:text-slate-400">{t('auth.loginSubtitle')}</p>
