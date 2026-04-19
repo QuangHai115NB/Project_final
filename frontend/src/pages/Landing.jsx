@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Button } from '../components/shared';
 import { LanguageToggle, useLanguage } from '../i18n/LanguageContext';
+import { ThemeToggle } from '../theme/ThemeContext';
 
 export default function Landing() {
   const { t } = useLanguage();
@@ -14,11 +15,12 @@ export default function Landing() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-cyan-50">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-cyan-950">
       {/* Nav */}
       <nav className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold text-primary">📋 CV Reviewer</h1>
+        <h1 className="text-2xl font-bold text-primary dark:text-blue-300">CV Reviewer</h1>
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <LanguageToggle />
           <Link to="/auth/login"><Button variant="outline" size="sm">{t('landing.login')}</Button></Link>
           <Link to="/auth/register"><Button size="sm">{t('landing.register')}</Button></Link>
@@ -28,11 +30,11 @@ export default function Landing() {
       {/* Hero */}
       <div className="max-w-4xl mx-auto px-6 py-20 text-center">
         <div className="text-6xl mb-6">🔍</div>
-        <h1 className="text-5xl font-black text-gray-800 mb-4">
+        <h1 className="text-5xl font-black text-gray-800 mb-4 dark:text-slate-100">
           {t('landing.title')}<br />
           <span className="text-primary">{t('landing.titleAccent')}</span>
         </h1>
-        <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto">
+        <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto dark:text-slate-300">
           {t('landing.subtitle')}
         </p>
         <Link to="/auth/register">
@@ -43,10 +45,10 @@ export default function Landing() {
       {/* Features */}
       <div className="max-w-6xl mx-auto px-6 py-16 grid grid-cols-1 md:grid-cols-3 gap-8">
         {features.map((f, i) => (
-          <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+          <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 dark:border-slate-700 dark:bg-slate-900">
             <div className="text-4xl mb-3">{f.icon}</div>
-            <h3 className="font-bold text-gray-800 mb-2">{f.title}</h3>
-            <p className="text-sm text-gray-500">{f.desc}</p>
+            <h3 className="font-bold text-gray-800 mb-2 dark:text-slate-100">{f.title}</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400">{f.desc}</p>
           </div>
         ))}
       </div>

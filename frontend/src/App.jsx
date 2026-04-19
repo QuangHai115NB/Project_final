@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './i18n/LanguageContext';
+import { ThemeProvider } from './theme/ThemeContext';
 import { ErrorBoundary, ProtectedRoute } from './components/shared';
 import Landing from './pages/Landing';
 import LoginForm from './components/auth/LoginForm';
@@ -12,25 +13,27 @@ import Dashboard from './pages/Dashboard';
 export default function App() {
   return (
     <LanguageProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <ErrorBoundary>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/auth/login" element={<LoginForm />} />
-              <Route path="/auth/register" element={<RegisterForm />} />
-              <Route path="/auth/verify-email" element={<VerifyEmail />} />
-              <Route path="/auth/forgot-password" element={<ForgotPassword />} />
-              <Route path="/dashboard" element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              } />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </ErrorBoundary>
-        </BrowserRouter>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/auth/login" element={<LoginForm />} />
+                <Route path="/auth/register" element={<RegisterForm />} />
+                <Route path="/auth/verify-email" element={<VerifyEmail />} />
+                <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+                <Route path="/dashboard" element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                } />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </ErrorBoundary>
+          </BrowserRouter>
+        </AuthProvider>
+      </ThemeProvider>
     </LanguageProvider>
   );
 }

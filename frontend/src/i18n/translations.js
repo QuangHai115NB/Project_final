@@ -8,6 +8,10 @@ export const translations = {
     'common.openNewTab': 'Mở trong tab mới',
     'common.fileLoading': 'Đang tải file...',
     'common.downloadWord': 'Tải báo cáo Word (.docx)',
+    'theme.light': 'Sáng',
+    'theme.dark': 'Tối',
+    'theme.switchLight': 'Chuyển sang giao diện sáng',
+    'theme.switchDark': 'Chuyển sang giao diện tối',
 
     'landing.login': 'Đăng nhập',
     'landing.register': 'Đăng ký',
@@ -209,6 +213,10 @@ export const translations = {
     'common.openNewTab': 'Open in new tab',
     'common.fileLoading': 'Loading file...',
     'common.downloadWord': 'Download Word report (.docx)',
+    'theme.light': 'Light',
+    'theme.dark': 'Dark',
+    'theme.switchLight': 'Switch to light mode',
+    'theme.switchDark': 'Switch to dark mode',
 
     'landing.login': 'Log in',
     'landing.register': 'Register',

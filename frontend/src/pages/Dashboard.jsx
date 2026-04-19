@@ -7,15 +7,16 @@ import { MatchMaker, MatchReport } from '../components/match';
 import { Button, Card, Modal, LoadingSpinner } from '../components/shared';
 import { useToast, Toast } from '../components/shared/Toast';
 import { LanguageToggle, useLanguage } from '../i18n/LanguageContext';
+import { ThemeToggle } from '../theme/ThemeContext';
 
 const MATCH_PAGE_SIZE = 8;
 
 function PageHeader({ title, description, action }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 border-b border-gray-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mb-6 flex flex-col gap-3 border-b border-gray-200 pb-5 dark:border-slate-700 lg:flex-row lg:items-end lg:justify-between">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
-        {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-slate-100">{title}</h2>
+        {description && <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{description}</p>}
       </div>
       {action}
     </div>
@@ -508,14 +509,14 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950">
       {toast && <Toast {...toast} onClose={hideToast} />}
 
       <div className="flex min-h-screen">
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-gray-200 bg-white lg:flex lg:flex-col">
-          <div className="border-b border-gray-200 p-5">
-            <h1 className="text-xl font-black text-primary">{t('app.name')}</h1>
-            <p className="mt-1 truncate text-sm text-gray-500">{user?.email}</p>
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-gray-200 bg-white dark:border-slate-800 dark:bg-slate-950 lg:flex lg:flex-col">
+          <div className="border-b border-gray-200 p-5 dark:border-slate-800">
+            <h1 className="text-xl font-black text-primary dark:text-blue-300">{t('app.name')}</h1>
+            <p className="mt-1 truncate text-sm text-gray-500 dark:text-slate-400">{user?.email}</p>
           </div>
           <nav className="flex-1 space-y-1 p-3">
             {navItems.map((item) => (
@@ -526,14 +527,15 @@ export default function Dashboard() {
                 className={`w-full rounded-lg px-4 py-3 text-left text-sm font-semibold transition-colors ${
                   activePage === item.id
                     ? 'bg-blue-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
                 }`}
               >
                 {item.label}
               </button>
             ))}
           </nav>
-          <div className="space-y-3 border-t border-gray-200 p-4">
+          <div className="space-y-3 border-t border-gray-200 p-4 dark:border-slate-800">
+            <ThemeToggle />
             <LanguageToggle />
             <Button variant="secondary" size="sm" className="w-full" onClick={logout}>
               {t('dashboard.logout')}
@@ -542,10 +544,11 @@ export default function Dashboard() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
-          <header className="sticky top-0 z-30 border-b border-gray-200 bg-white px-4 py-3 lg:hidden">
+          <header className="sticky top-0 z-30 border-b border-gray-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950 lg:hidden">
             <div className="flex items-center justify-between gap-3">
-              <h1 className="text-lg font-black text-primary">{t('app.name')}</h1>
+              <h1 className="text-lg font-black text-primary dark:text-blue-300">{t('app.name')}</h1>
               <div className="flex items-center gap-2">
+                <ThemeToggle />
                 <LanguageToggle />
                 <Button variant="secondary" size="sm" onClick={logout}>{t('dashboard.logout')}</Button>
               </div>
@@ -559,7 +562,7 @@ export default function Dashboard() {
                   className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${
                     activePage === item.id
                       ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700'
+                      : 'bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-200'
                   }`}
                 >
                   {item.label}

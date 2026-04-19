@@ -8,7 +8,7 @@ export default function LoadingSpinner({ size = 'md', text = '' }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3">
       <div className={`${sizes[size]} animate-spin rounded-full border-primary border-t-transparent`}></div>
-      {text && <p className="text-gray-500 text-sm">{text}</p>}
+      {text && <p className="text-sm text-gray-500 dark:text-slate-400">{text}</p>}
     </div>
   );
 }

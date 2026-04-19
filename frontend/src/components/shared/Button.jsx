@@ -9,10 +9,10 @@ export default function Button({
 }) {
   const variants = {
     primary: 'bg-primary hover:bg-blue-700 text-white',
-    secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800',
+    secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600',
     danger: 'bg-danger hover:bg-red-600 text-white',
     success: 'bg-success hover:bg-green-600 text-white',
-    outline: 'border-2 border-primary text-primary hover:bg-blue-50',
+    outline: 'border-2 border-primary text-primary hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/40',
   };
 
   const sizes = {
