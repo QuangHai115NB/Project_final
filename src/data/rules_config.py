@@ -1,5 +1,5 @@
 
-REQUIRED_CV_SECTIONS = ["Summary", "Skills", "Experience", "Education"]
+REQUIRED_CV_SECTIONS = ["Summary", "Skills", "Experience"]
 RECOMMENDED_CV_SECTIONS = ["Projects", "Certifications"]
 
 SECTION_HEADERS = {
@@ -81,8 +81,24 @@ KEYWORD_BLACKLIST = {
     "experience", "skills", "education", "job", "work", "candidate",
     "team", "company", "role", "position", "requirement", "requirements",
     "responsibilities", "summary", "project", "projects", "knowledge",
-    "strong", "good", "ability"
+    "strong", "good", "ability",
+    "salary", "compensation", "benefit", "benefits", "bonus", "allowance",
+    "insurance", "health insurance", "social insurance", "paid leave",
+    "annual leave", "vacation", "remote", "hybrid", "onsite", "office",
+    "location", "address", "working hours", "working time", "full time",
+    "part time", "interview", "recruitment", "apply", "application",
+    "lương", "thu nhập", "phúc lợi", "thưởng", "bảo hiểm", "nghỉ phép",
+    "địa điểm", "văn phòng", "thời gian làm việc", "ứng tuyển", "phỏng vấn"
 }
+
+KEYWORD_EXCLUDED_PATTERNS = [
+    r"\b(salary|compensation|benefits?|bonus|allowance|insurance|paid leave|annual leave|vacation)\b",
+    r"\b(remote|hybrid|onsite|office|location|address|working hours|working time|full time|part time)\b",
+    r"\b(interview|recruitment|apply|application|probation|contract)\b",
+    r"\b(lương|thu nhập|phúc lợi|thưởng|bảo hiểm|nghỉ phép|địa điểm|văn phòng|thời gian làm việc|ứng tuyển|phỏng vấn)\b",
+    r"[$€£¥₫]\s*\d+",
+    r"\b\d+\s*(usd|vnd|eur|gbp|triệu|tr|million|month|year|tháng|năm)\b",
+]
 
 SCORE_WEIGHTS = {
     "section": 15,

@@ -6,6 +6,7 @@ thành 1 JSON report hoàn chỉnh để trả về API và lưu DB.
 Compatible với jd_matcher.py v2 output schema.
 """
 
+import re
 from typing import Any, Dict, List
 from src.data.rules_config import (
     REPORT_SCORE_WEIGHTS,
@@ -75,6 +76,50 @@ def _weighted_score(scores: Dict[str, float], weights: Dict[str, float]) -> floa
     )
 
 
+def _clean_display_line(value: Any) -> str:
+    line = str(value or "")
+    line = re.sub(r"\s+", " ", line).strip()
+    line = re.sub(r"^[\s\-*•●▪–—]+", "", line)
+    line = re.sub(r"^\(?\s*(?:\d+|[a-zA-Z])[\).:-]\s*", "", line)
+    line = re.sub(r"^[\s([{:;,.]+", "", line)
+    line = re.sub(r"[\s)\]}:;,.]+$", "", line)
+    line = re.sub(r"\s+([,.;:!?])", r"\1", line)
+    line = re.sub(r"([(])\s+", r"\1", line)
+    line = re.sub(r"\s+([)])", r"\1", line)
+    if not re.search(r"[A-Za-zÀ-ỹ0-9]", line):
+        return ""
+    return line
+
+
+def _clean_unmatched_jd_lines(items: List[Any], limit: int = 3) -> List[dict]:
+    cleaned = []
+    seen = set()
+    for item in items or []:
+        if isinstance(item, dict):
+            source_line = item.get("jd_line") or item.get("excerpt") or ""
+            score = item.get("best_cv_score")
+        else:
+            source_line = item
+            score = None
+
+        line = _clean_display_line(source_line)
+        if len(line.split()) < 4:
+            continue
+
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        entry = {"jd_line": line}
+        if score is not None:
+            entry["best_cv_score"] = score
+        cleaned.append(entry)
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
 def build_match_report(
     cv_record,
     jd_record,
@@ -142,8 +187,8 @@ def build_match_report(
     # ── Merge issues từ tất cả sources ──────────────────────────────
     # jd_report v2 đã có suggested_fix trong từng issue
     all_issues = _merge_unique(
-        rule_report.get("issues", [])
-        + jd_report.get("issues", []),
+        jd_report.get("issues", [])
+        + rule_report.get("issues", []),
         key_fields=("code",),  # Dùng chỉ "code" để dedup chính xác hơn
     )
 
@@ -188,6 +233,10 @@ def build_match_report(
 
     # ── Semantic detail (mới trong v2) ───────────────────────────────
     semantic_detail = jd_report.get("semantic", {})
+    unmatched_jd_lines = _clean_unmatched_jd_lines(
+        semantic_detail.get("unmatched_jd_lines", []),
+        limit=3,
+    )
 
     return {
         "summary": {
@@ -211,7 +260,7 @@ def build_match_report(
             "score": round(semantic_score, 2),
             "top_matches": semantic_detail.get("top_matches", [])[:3],
             "weak_matches": semantic_detail.get("weak_matches", [])[:3],
-            "unmatched_jd_lines": semantic_detail.get("unmatched_jd_lines", [])[:3],
+            "unmatched_jd_lines": unmatched_jd_lines,
         },
         "cv_checks": rule_report,
         "jd_match": jd_report,

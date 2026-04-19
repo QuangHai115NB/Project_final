@@ -382,7 +382,8 @@ def _add_issues(doc: Document, issues: list):
 
         title = issue.get("title", issue.get("code", "Issue"))
         explanation = issue.get("explanation", "")
-        suggested_fix = issue.get("suggested_fix", "")
+        suggested_fix = issue.get("optional_rewrite") or issue.get("suggested_fix_en") or issue.get("suggested_fix", "")
+        fix_meaning = issue.get("optional_rewrite_meaning_vi") or issue.get("fix_meaning_vi", "")
         evidence = issue.get("evidence", [])
 
         # Issue block (table for background color)
@@ -424,13 +425,23 @@ def _add_issues(doc: Document, issues: list):
         # Suggested fix
         if suggested_fix:
             fix_p = cell.add_paragraph()
-            fix_label = fix_p.add_run("💡 Fix: ")
+            fix_label = fix_p.add_run("Suggested CV wording: ")
             fix_label.bold = True
             fix_label.font.size = Pt(10)
             fix_label.font.color.rgb = COLOR_PRIMARY
             fix_r = fix_p.add_run(suggested_fix)
             fix_r.font.size = Pt(10)
             fix_r.font.color.rgb = COLOR_GRAY_DARK
+
+        if fix_meaning:
+            meaning_p = cell.add_paragraph()
+            meaning_label = meaning_p.add_run("Ý nghĩa: ")
+            meaning_label.bold = True
+            meaning_label.font.size = Pt(10)
+            meaning_label.font.color.rgb = COLOR_GRAY_MEDIUM
+            meaning_r = meaning_p.add_run(fix_meaning)
+            meaning_r.font.size = Pt(10)
+            meaning_r.font.color.rgb = COLOR_GRAY_DARK
 
         _paragraph_spacing(cell.paragraphs[0], before=60, after=40)
         cell.add_paragraph()  # bottom padding

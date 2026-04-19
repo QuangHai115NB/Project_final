@@ -9,6 +9,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from src.data.rules_config import (
     JD_PREFERRED_MARKERS,
+    KEYWORD_EXCLUDED_PATTERNS,
     KEYWORD_BLACKLIST,
     MAX_KEYWORDS,
 )
@@ -69,6 +70,13 @@ def _detect_seniority(text: str) -> str:
 def _is_preferred_line(line: str) -> bool:
     lowered = line.lower()
     return any(marker in lowered for marker in JD_PREFERRED_MARKERS)
+
+
+def _is_excluded_keyword(term: str) -> bool:
+    lowered = term.strip().lower()
+    if not lowered or lowered in KEYWORD_BLACKLIST or lowered.isdigit():
+        return True
+    return any(re.search(pattern, lowered, re.IGNORECASE) for pattern in KEYWORD_EXCLUDED_PATTERNS)
 
 
 # ─── Layer 1: Skill Matching ─────────────────────────────────────────
@@ -152,7 +160,7 @@ def _compute_semantic_score(
     """
     experience_text = "\n".join(
         cv_sections.get(sec, "")
-        for sec in ("Experience", "Projects", "Summary")
+        for sec in ("Skills", "Experience", "Projects", "Summary")
     ).strip()
 
     if not experience_text:
@@ -267,6 +275,53 @@ def _evidence_to_details(evidence: List) -> List[str]:
     return details
 
 
+def _add_issue_localization(issue: Dict) -> None:
+    code = issue.get("code", "")
+    evidence = issue.get("evidence", [])
+    details = _evidence_to_details(evidence)
+    joined = ", ".join(details[:5])
+    explanation_vi = issue.get("explanation", "")
+
+    explanations_en = {
+        "missing_required_skills": (
+            f"The JD requires {len(evidence)} skills that are not clearly represented in the CV: {joined}."
+        ),
+        "missing_preferred_skills": (
+            f"These nice-to-have skills are not shown yet: {joined}. Adding real experience with them can improve fit."
+        ),
+        "skill_no_evidence": (
+            f"These skills appear in Skills but are not supported by Experience/Projects evidence: {joined}."
+        ),
+        "keyword_gap": (
+            f"The CV does not naturally address important JD keywords: {joined}."
+        ),
+        "weak_bullets": (
+            "Some bullets start with passive phrases such as 'Responsible for', 'Worked on', or 'Helped with', "
+            "which weakens ownership and impact."
+        ),
+        "missing_metrics": (
+            "Experience/Projects bullets do not include measurable outcomes such as users, APIs, response time, "
+            "throughput, modules, or percentage improvements."
+        ),
+        "weak_experience_alignment": (
+            "The Experience/Projects content does not align strongly with the JD responsibilities. Rewrite bullets "
+            "to reflect similar work you have actually performed."
+        ),
+        "seniority_gap": (
+            "The seniority level communicated by the CV does not match the level requested by the JD."
+        ),
+        "uncovered_responsibilities": (
+            "Several JD responsibilities are not addressed by any Experience/Projects bullet."
+        ),
+    }
+
+    issue["explanation_vi"] = explanation_vi
+    issue["explanation_en"] = explanations_en.get(
+        code,
+        "Review this issue and update the CV using the evidence shown in the report.",
+    )
+
+
 # ─── Layer 3: Keyword Matching ───────────────────────────────────────
 
 def _compute_keyword_score(
@@ -282,6 +337,7 @@ def _compute_keyword_score(
     """
     cv_norm = normalize_for_matching(cv_text)
     jd_norm = normalize_for_matching(jd_text)
+    jd_skill_set = set(extract_skills(jd_text).get("skills", []))
 
     if not cv_norm or not jd_norm:
         return 0.0, {"keywords": [], "matched": [], "missing": [], "tfidf_similarity": 0.0}
@@ -302,9 +358,21 @@ def _compute_keyword_score(
 
         keywords = []
         for term, weight in ranked:
-            if weight <= 0 or len(term) < 3 or term in KEYWORD_BLACKLIST or term.isdigit():
+            if weight <= 0 or len(term) < 3:
+                continue
+            if _is_excluded_keyword(term):
+                continue
+            if jd_skill_set and term not in jd_skill_set:
                 continue
             keywords.append(term)
+            if len(keywords) >= limit:
+                break
+
+        for skill in sorted(jd_skill_set):
+            if _is_excluded_keyword(skill):
+                continue
+            if skill not in keywords:
+                keywords.append(skill)
             if len(keywords) >= limit:
                 break
 
@@ -540,7 +608,7 @@ def _generate_errors_and_suggestions(
             "evidence": no_evidence,
             "explanation": (
                 f"Các kỹ năng này có trong mục Skills nhưng không xuất hiện "
-                f"trong bất kỳ bullet nào của Experience/Projects: {', '.join(no_evidence)}. "
+                f"trong bất kỳ dòng mô tả nào của Experience/Projects: {', '.join(no_evidence)}. "
                 f"Recruiter sẽ nghi ngờ tính xác thực."
             ),
         })
@@ -555,7 +623,7 @@ def _generate_errors_and_suggestions(
             "section": "Summary / Experience",
             "evidence": missing_kw[:8],
             "explanation": (
-                f"CV chưa cover {len(missing_kw)} từ khóa quan trọng từ JD: "
+                f"CV chưa đáp ứng {len(missing_kw)} từ khóa quan trọng từ JD: "
                 f"{', '.join(missing_kw[:5])}."
             ),
         })
@@ -569,9 +637,9 @@ def _generate_errors_and_suggestions(
             "error_type": "language_quality",
             "severity": "medium",
             "section": "Experience / Projects",
-            "evidence": weak_excerpts[:3],   # trích dẫn bullet cụ thể
+            "evidence": weak_excerpts[:3],   # trích dẫn dòng mô tả cụ thể
             "explanation": (
-                f"{weak_count} bullets bắt đầu bằng cụm từ thụ động "
+                f"{weak_count} dòng mô tả bắt đầu bằng cụm từ thụ động "
                 f"('Responsible for', 'Worked on', 'Helped with'...). "
                 f"Recruiter sẽ nghi ngờ tính chủ động trong công việc."
             ),
@@ -587,11 +655,11 @@ def _generate_errors_and_suggestions(
             "error_type": "content_quality",
             "severity": "medium",
             "section": "Experience / Projects",
-            "evidence": metricless_excerpts[:3] or ["Không có bullet nào chứa số liệu đo lường."],
+            "evidence": metricless_excerpts[:3] or ["Không có dòng mô tả nào chứa số liệu đo lường."],
             "explanation": (
-                f"Không có bullet nào trong {total_bullets} bullets chứa số liệu cụ thể "
+                f"Không có dòng mô tả nào trong {total_bullets} dòng mô tả chứa số liệu cụ thể "
                 f"(%, số user, số API, thời gian...). "
-                f"CV IT mạnh cần ít nhất 2-3 bullets có con số cụ thể."
+                f"CV IT mạnh cần ít nhất 2-3 dòng mô tả có con số cụ thể."
             ),
         })
 
@@ -604,12 +672,13 @@ def _generate_errors_and_suggestions(
             "severity": "high",
             "section": "Experience",
             "evidence": [
-                f"TF-IDF similarity với JD: {exp_score:.1f}/100",
-                f"CV years: {experience_detail.get('cv_years', 0)}, JD requires: {experience_detail.get('jd_years', 0)}",
+                f"Mức khớp nội dung kinh nghiệm với JD: {exp_score:.1f}/100",
+                f"Số năm trong CV: {experience_detail.get('cv_years', 0)}; JD yêu cầu: {experience_detail.get('jd_years', 0)}",
+                "Tiêu chí: dòng mô tả nên thể hiện đúng công việc chính trong JD, công nghệ liên quan, phạm vi bạn phụ trách và kết quả đạt được.",
             ],
             "explanation": (
                 "Nội dung Experience/Projects chưa bám sát trách nhiệm trong JD. "
-                "Cần viết lại bullets để phản ánh đúng công việc JD yêu cầu."
+                "Hãy chọn 3-5 trách nhiệm quan trọng nhất trong JD rồi viết lại dòng mô tả để cho thấy bạn đã làm việc tương tự, dùng công nghệ phù hợp và có kết quả rõ ràng."
             ),
         })
 
@@ -639,14 +708,15 @@ def _generate_errors_and_suggestions(
             "section": "Experience",
             "evidence": [item["jd_line"][:100] for item in unmatched_jd[:3]],
             "explanation": (
-                f"{len(unmatched_jd)} trách nhiệm trong JD chưa được cover "
-                f"bởi bất kỳ bullet nào trong Experience/Projects."
+                f"{len(unmatched_jd)} trách nhiệm trong JD chưa được CV đáp ứng "
+                f"bởi bất kỳ dòng mô tả nào trong Experience/Projects."
             ),
         })
 
     # Keep compatibility with suggestion_engine, which reads details.
     for issue in issues:
         issue.setdefault("details", _evidence_to_details(issue.get("evidence", [])))
+        _add_issue_localization(issue)
 
     # --- Generate suggested_fix cho từng issue ---
     if use_suggestion_engine and SUGGESTION_ENGINE_AVAILABLE:
@@ -660,9 +730,13 @@ def _generate_errors_and_suggestions(
         # Thêm suggested_fix rule-based nếu không có suggestion engine
         from src.services.suggestion_engine import _get_rule_based_fix
         for issue in issues:
-            issue["suggested_fix"] = _get_rule_based_fix(
+            localized_fix = _get_rule_based_fix(
                 issue["code"], issue.get("evidence", []), issue.get("section", "")
             )
+            issue["suggested_fix"] = localized_fix["meaning_vi"]
+            issue["suggested_fix_en"] = localized_fix["fix_en"]
+            issue["fix_meaning_vi"] = localized_fix["meaning_vi"]
+            issue["fix_meaning_en"] = localized_fix["meaning_en"]
 
     return issues, suggestions
 
@@ -697,6 +771,14 @@ def _build_rewrite_examples(
                 f"Developed [feature/module] for [system] using {joined}, "
                 f"improving [metric] by [X%] and supporting [N] users/requests."
             ),
+            "meaning_vi": (
+                "Mẫu này nói rằng bạn đã phát triển một tính năng hoặc module bằng các công nghệ liên quan, "
+                "có kết quả đo được và có phạm vi sử dụng rõ ràng."
+            ),
+            "meaning_en": (
+                "This shows what you built, which relevant technologies you used, the measurable result, "
+                "and the usage scale."
+            ),
         },
         {
             "target_section": "Projects",
@@ -706,6 +788,13 @@ def _build_rewrite_examples(
                 f"Implemented [key feature], deployed on [platform], "
                 f"achieving [measurable result]."
             ),
+            "meaning_vi": (
+                "Mẫu này giúp mô tả project theo hướng có mục tiêu, công nghệ, tính năng chính, cách triển khai "
+                "và kết quả đạt được."
+            ),
+            "meaning_en": (
+                "This frames a project with purpose, technology, key feature, deployment context, and outcome."
+            ),
         },
         {
             "target_section": "Summary",
@@ -714,6 +803,13 @@ def _build_rewrite_examples(
                 f"Software Engineer with [X] years of experience in {jd_domain}, "
                 f"specializing in {joined}. "
                 f"Track record of delivering [outcome] in [context]."
+            ),
+            "meaning_vi": (
+                "Mẫu này dùng cho phần Summary để nêu số năm kinh nghiệm, lĩnh vực, công nghệ trọng tâm "
+                "và kết quả nổi bật."
+            ),
+            "meaning_en": (
+                "This summary states years of experience, domain, core technologies, and a concrete delivery record."
             ),
         },
     ]
@@ -736,7 +832,7 @@ def match_cv_to_jd(
         jd_text: raw JD text
         parsed_cv: output của parse_sections() — dict với key "sections"
         use_semantic: có dùng sentence-transformers không
-        use_suggestion_engine: có gọi Anthropic API không
+        use_suggestion_engine: có gọi Gemini API không
 
     Returns structured dict với đầy đủ scores, issues, suggestions.
 

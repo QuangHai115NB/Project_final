@@ -21,6 +21,9 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Tuple
 
+from src.data.rules_config import KEYWORD_EXCLUDED_PATTERNS
+from src.data.skills_taxonomy import extract_skills
+
 # Lazy import để tránh crash nếu chưa cài
 _model = None
 _model_name = "all-MiniLM-L6-v2"
@@ -76,7 +79,20 @@ def _extract_jd_responsibilities(jd_text: str) -> List[str]:
     else:
         relevant_text = jd_text
 
-    return _extract_bullets(relevant_text)
+    cleaned_lines = [
+        line for line in _extract_bullets(relevant_text)
+        if not _is_non_matching_jd_line(line)
+    ]
+    skill_lines = [
+        line for line in cleaned_lines
+        if extract_skills(line).get("skills")
+    ]
+    return skill_lines or cleaned_lines
+
+
+def _is_non_matching_jd_line(line: str) -> bool:
+    lowered = str(line or "").lower()
+    return any(re.search(pattern, lowered, re.IGNORECASE) for pattern in KEYWORD_EXCLUDED_PATTERNS)
 
 
 def compute_semantic_similarity(text_a: str, text_b: str) -> float:

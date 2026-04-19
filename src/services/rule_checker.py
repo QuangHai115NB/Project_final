@@ -194,12 +194,12 @@ def run_rule_checks(text: str, parsed_sections: dict) -> dict:
             "code": "missing_metrics",
             "severity": "medium",
             "title": "Phần Experience/Projects chưa có số liệu đo lường",
-            "details": ["Không tìm thấy bullet có %, số lượng user, số API, thời gian phản hồi, số module..."]
+            "details": ["Không tìm thấy dòng mô tả có %, số lượng user, số API, thời gian phản hồi, số module..."]
         })
         suggestions.append({
             "type": "add_metrics",
             "target": "experience",
-            "message": "Mỗi project/kinh nghiệm nên có ít nhất 1 bullet chứa số liệu: %, số user, số API, số module, thời gian xử lý..."
+            "message": "Mỗi project/kinh nghiệm nên có ít nhất 1 dòng mô tả chứa số liệu: %, số user, số API, số module, thời gian xử lý..."
         })
 
     if bullet_analysis["total_bullets"] > 0 and bullet_analysis["action_verb_bullets"] < max(1, bullet_analysis["total_bullets"] // 2):
@@ -207,13 +207,13 @@ def run_rule_checks(text: str, parsed_sections: dict) -> dict:
         issues.append({
             "code": "weak_bullets",
             "severity": "medium",
-            "title": "Nhiều bullet chưa bắt đầu bằng động từ mạnh",
+            "title": "Nhiều dòng mô tả chưa bắt đầu bằng động từ mạnh",
             "details": bullet_analysis["weak_bullets"]
         })
         suggestions.append({
             "type": "rewrite_bullets",
             "target": "experience",
-            "message": "Viết bullet theo mẫu: Action Verb + Technology + Scope + Result. Ví dụ: Developed REST APIs using FastAPI for student support system, reducing response time by 30%."
+            "message": "Viết dòng mô tả theo mẫu: Action Verb + Technology + Scope + Result. Ví dụ: Developed REST APIs using FastAPI for student support system, reducing response time by 30%."
         })
 
     structure_score = max(0.0, 100.0 - penalty)

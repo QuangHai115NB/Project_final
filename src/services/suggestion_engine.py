@@ -1,6 +1,6 @@
 # src/services/suggestion_engine.py
 """
-Suggestion Engine — dùng Anthropic API để sinh ra suggested_fix
+Suggestion Engine — dùng Gemini API để sinh ra suggested_fix
 thực tế, cụ thể cho từng lỗi phát hiện được.
 
 Không dùng cho toàn bộ CV (tốn token) mà chỉ dùng cho:
@@ -20,33 +20,47 @@ import re
 from typing import Dict, List, Optional
 
 # API key lấy từ env — không hardcode
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 
-def _call_claude(prompt: str, max_tokens: int = 500) -> str:
+def _call_gemini(prompt: str, max_tokens: int = 500) -> str:
     """
-    Gọi Anthropic API, trả về text response.
+    Gọi Gemini API, trả về text response.
     Trả về "" nếu lỗi hoặc không có key.
     """
-    if not ANTHROPIC_API_KEY:
+    if not GEMINI_API_KEY:
         return ""
 
     try:
         import urllib.request
+        import urllib.parse
 
         payload = json.dumps({
-            "model": CLAUDE_MODEL,
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}],
+                }
+            ],
+            "generationConfig": {
+                "maxOutputTokens": max_tokens,
+                "temperature": 0.3,
+                "topP": 0.8,
+            },
         }).encode("utf-8")
 
+        model = urllib.parse.quote(GEMINI_MODEL, safe="")
+        api_key = urllib.parse.quote(GEMINI_API_KEY, safe="")
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent?key={api_key}"
+        )
+
         req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
+            url,
             data=payload,
             headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
             method="POST",
@@ -54,11 +68,11 @@ def _call_claude(prompt: str, max_tokens: int = 500) -> str:
 
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            content_blocks = data.get("content", [])
-            return "".join(
-                block.get("text", "") for block in content_blocks
-                if block.get("type") == "text"
-            ).strip()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                return ""
+            parts = candidates[0].get("content", {}).get("parts", [])
+            return "".join(part.get("text", "") for part in parts).strip()
 
     except Exception:
         return ""
@@ -91,7 +105,7 @@ def rewrite_weak_bullet(
     # Template fallback (không cần API)
     fallback = _template_rewrite_bullet(bullet, missing_skills)
 
-    if not ANTHROPIC_API_KEY:
+    if not GEMINI_API_KEY:
         return fallback
 
     jd_snippet = jd_context[:300] if jd_context else ""
@@ -119,7 +133,7 @@ Original weak bullet:
 
 Rewritten bullet (output ONLY the bullet, no explanation):"""
 
-    result = _call_claude(prompt, max_tokens=150)
+    result = _call_gemini(prompt, max_tokens=150)
 
     # Nếu API trả về rỗng hoặc lỗi → dùng fallback
     if not result or len(result.split()) < 5:
@@ -149,7 +163,7 @@ def suggest_missing_skill_addition(
     """
     fallback = _template_skill_addition(skill_name, section)
 
-    if not ANTHROPIC_API_KEY:
+    if not GEMINI_API_KEY:
         return fallback
 
     jd_snippet = jd_context[:200] if jd_context else ""
@@ -165,7 +179,7 @@ Output format: "Add to {section}: '[example bullet]'"
 
 Output ONLY the suggestion, no explanation:"""
 
-    result = _call_claude(prompt, max_tokens=120)
+    result = _call_gemini(prompt, max_tokens=120)
 
     if not result:
         return fallback
@@ -194,7 +208,7 @@ def rewrite_summary_for_jd(
     """
     fallback = _template_summary_rewrite(jd_title, matched_skills)
 
-    if not ANTHROPIC_API_KEY:
+    if not GEMINI_API_KEY:
         return fallback
 
     skills_str = ", ".join(matched_skills[:6])
@@ -217,7 +231,7 @@ Rules:
 
 Output ONLY the rewritten summary:"""
 
-    result = _call_claude(prompt, max_tokens=200)
+    result = _call_gemini(prompt, max_tokens=200)
 
     if not result or len(result.split()) < 10:
         return fallback
@@ -267,8 +281,9 @@ def generate_bulk_suggestions(
         details = error.get("details", [])
         section = error.get("section", "")
 
-        # --- Rule-based fallback luôn có ---
-        suggested_fix = _get_rule_based_fix(code, details, section)
+        # --- Rule-based fallback always exists ---
+        localized = _get_rule_based_fix(code, details, section)
+        suggested_fix = localized["meaning_vi"]
         optional_rewrite = ""
 
         # --- API-powered fix cho các lỗi quan trọng ---
@@ -310,8 +325,13 @@ def generate_bulk_suggestions(
                     api_calls_used += 1
 
         error_copy["suggested_fix"] = suggested_fix
+        error_copy["suggested_fix_en"] = localized["fix_en"]
+        error_copy["fix_meaning_vi"] = localized["meaning_vi"]
+        error_copy["fix_meaning_en"] = localized["meaning_en"]
         if optional_rewrite:
             error_copy["optional_rewrite"] = optional_rewrite
+            error_copy["optional_rewrite_meaning_vi"] = _explain_rewrite_vi(optional_rewrite)
+            error_copy["optional_rewrite_meaning_en"] = _explain_rewrite_en(optional_rewrite)
 
         enriched.append(error_copy)
 
@@ -358,65 +378,90 @@ def _template_summary_rewrite(jd_title: str, matched_skills: List[str]) -> str:
     )
 
 
-def _get_rule_based_fix(code: str, details: list, section: str) -> str:
-    """Rule-based suggested_fix — luôn trả về text hữu ích."""
+def _explain_rewrite_vi(rewrite: str) -> str:
+    return (
+        "Đây là câu tiếng Anh có thể đưa vào CV sau khi bạn xác nhận đúng với kinh nghiệm thật. "
+        "Câu này nhấn mạnh hành động, công nghệ đã dùng, phạm vi công việc và kết quả đo được."
+    )
+
+
+def _explain_rewrite_en(rewrite: str) -> str:
+    return (
+        "Use this English wording only if it matches your real experience. "
+        "It emphasizes action, technology, work scope, and measurable impact."
+    )
+
+
+def _get_rule_based_fix(code: str, details: list, section: str) -> Dict[str, str]:
+    """Return English CV wording plus localized meaning for the user."""
+    joined = ", ".join(str(d) for d in details[:5])
     fixes = {
-        "missing_required_skills": (
-            f"Nếu bạn đã có kinh nghiệm với {', '.join(str(d) for d in details[:3])}, "
-            f"hãy thêm vào: (1) mục Skills dưới dạng bullet rõ ràng, "
-            f"(2) mục Experience/Projects dưới dạng bullet có context cụ thể."
-        ),
-        "missing_preferred_skills": (
-            f"Các kỹ năng nice-to-have: {', '.join(str(d) for d in details[:3])}. "
-            f"Nếu bạn có kinh nghiệm dù nhỏ, hãy thêm vào Projects hoặc một dòng trong Skills."
-        ),
-        "weak_bullets": (
-            "Viết lại bullet theo format: "
-            "'[Action Verb] + [Hệ thống/Feature bạn xây] + [Technology] + [Kết quả đo được]'. "
-            "Ví dụ: 'Developed student management module using Spring Boot + MySQL, "
-            "supporting 500+ concurrent users.'"
-        ),
-        "missing_metrics": (
-            "Thêm số liệu vào ít nhất 2-3 bullets: "
-            "số user, số API endpoints, % cải thiện performance, số lượng request/day, "
-            "thời gian giảm được, số module xây dựng, team size..."
-        ),
-        "generic_phrases": (
-            f"Xóa cụm từ: {', '.join(str(d) for d in details[:3])}. "
-            f"Thay bằng minh chứng cụ thể: technology đã dùng, feature đã xây, kết quả đạt được."
-        ),
-        "missing_sections": (
-            f"Bổ sung section: {', '.join(str(d) for d in details)}. "
-            f"Đây là phần thiết yếu để ATS và recruiter đánh giá đúng hồ sơ của bạn."
-        ),
-        "keyword_gap": (
-            f"CV chưa chứa từ khóa: {', '.join(str(d) for d in details[:5])}. "
-            f"Tích hợp tự nhiên vào Summary và Experience bullets — không spam từ khóa."
-        ),
-        "weak_experience_alignment": (
-            "Mô tả Experience chưa bám sát JD. Đọc lại JD, xác định 3-5 trách nhiệm chính, "
-            "sau đó viết lại bullets để thể hiện bạn đã làm những việc tương tự."
-        ),
-        "seniority_gap": (
-            f"JD yêu cầu level {details[1] if len(details) > 1 else 'khác'} "
-            f"nhưng CV đang thể hiện level {details[0] if details else 'không rõ'}. "
-            f"Điều chỉnh ngôn ngữ, scope dự án và số năm kinh nghiệm cho phù hợp."
-        ),
-        "skill_no_evidence": (
-            f"Kỹ năng {', '.join(str(d) for d in details[:2])} có trong Skills "
-            f"nhưng không xuất hiện trong Experience/Projects. "
-            f"Thêm ít nhất 1 bullet chứa kỹ năng này kèm context cụ thể."
-        ),
-        "contact_info": (
-            f"Bổ sung thông tin: {', '.join(str(d) for d in details)}. "
-            f"LinkedIn và GitHub đặc biệt quan trọng với CV IT."
-        ),
-        "cv_length": (
-            "Độ dài CV chưa tối ưu. CV IT nên có 400-700 từ (1-2 trang). "
-            "Tập trung vào kinh nghiệm 3-5 năm gần nhất và dự án liên quan JD."
-        ),
+        "missing_required_skills": {
+            "fix_en": f"Add verified experience with {joined} to Skills and at least one Experience or Projects bullet.",
+            "meaning_vi": f"Nếu bạn thật sự có kinh nghiệm với {joined}, hãy đưa vào mục Skills và thêm ít nhất một dòng mô tả trong Experience/Projects để chứng minh.",
+            "meaning_en": f"If you genuinely have experience with {joined}, add it to Skills and support it with at least one Experience/Projects bullet.",
+        },
+        "missing_preferred_skills": {
+            "fix_en": f"Mention nice-to-have skills such as {joined} in Projects or Skills only if you have used them.",
+            "meaning_vi": f"Các kỹ năng này không bắt buộc nhưng giúp tăng độ phù hợp. Chỉ thêm nếu bạn đã từng dùng.",
+            "meaning_en": "These skills are not mandatory, but they improve fit. Add them only if you have real usage.",
+        },
+        "weak_bullets": {
+            "fix_en": "Rewrite weak bullets as: [Action Verb] + [what you built] + [technology] + [scope/result].",
+            "meaning_vi": "Hãy viết dòng mô tả theo hướng chủ động: bạn đã xây gì, dùng công nghệ nào, phạm vi ra sao và tạo kết quả gì.",
+            "meaning_en": "Use active ownership: what you built, which technology you used, the scope, and the result.",
+        },
+        "missing_metrics": {
+            "fix_en": "Add measurable outcomes to 2-3 bullets, such as users, APIs, response time, throughput, modules, or percentage improvements.",
+            "meaning_vi": "CV cần có số liệu để recruiter thấy tác động thật: số user, số API, % cải thiện, thời gian phản hồi, số module.",
+            "meaning_en": "Add numbers so recruiters can see impact: users, APIs, percentage gains, response time, or modules delivered.",
+        },
+        "generic_phrases": {
+            "fix_en": f"Replace generic phrases ({joined}) with concrete evidence: technology, feature, scope, and result.",
+            "meaning_vi": "Các cụm từ chung chung không chứng minh năng lực. Hãy thay bằng công nghệ, feature và kết quả cụ thể.",
+            "meaning_en": "Generic phrases do not prove ability. Replace them with technology, feature scope, and outcomes.",
+        },
+        "missing_sections": {
+            "fix_en": f"Add missing CV sections: {joined}.",
+            "meaning_vi": "Các section này giúp ATS và recruiter đọc đúng cấu trúc hồ sơ.",
+            "meaning_en": "These sections help ATS and recruiters understand your profile structure.",
+        },
+        "keyword_gap": {
+            "fix_en": f"Naturally include relevant JD keywords such as {joined} in Summary and Experience bullets.",
+            "meaning_vi": "Hãy tích hợp keyword quan trọng từ JD vào ngữ cảnh thật, không nhồi từ khóa rời rạc.",
+            "meaning_en": "Integrate important JD keywords in real context instead of keyword stuffing.",
+        },
+        "weak_experience_alignment": {
+            "fix_en": "Rewrite Experience bullets to mirror the JD responsibilities you have actually performed.",
+            "meaning_vi": "Đọc lại JD, chọn 3-5 trách nhiệm chính. Mỗi dòng mô tả nên nêu rõ việc bạn đã làm, công nghệ liên quan, phạm vi phụ trách và kết quả đạt được.",
+            "meaning_en": "Review the JD, pick 3-5 key responsibilities, and show similar work you have actually done.",
+        },
+        "seniority_gap": {
+            "fix_en": "Adjust the Summary and Experience scope so the CV communicates the right seniority level.",
+            "meaning_vi": "Ngôn ngữ, phạm vi dự án và mức độ ownership cần khớp level mà JD yêu cầu.",
+            "meaning_en": "The wording, project scope, and ownership level should match the seniority required by the JD.",
+        },
+        "skill_no_evidence": {
+            "fix_en": f"Add evidence for {joined} in Experience or Projects, not only in the Skills list.",
+            "meaning_vi": "Kỹ năng chỉ xuất hiện trong Skills chưa đủ thuyết phục. Cần có dòng mô tả chứng minh bạn đã dùng kỹ năng đó.",
+            "meaning_en": "A skill listed only in Skills is weak evidence. Add a bullet showing how you used it.",
+        },
+        "contact_info": {
+            "fix_en": f"Add missing contact/profile information: {joined}.",
+            "meaning_vi": "Thông tin liên hệ và hồ sơ như LinkedIn/GitHub giúp CV IT chuyên nghiệp và đáng tin hơn.",
+            "meaning_en": "Contact and profile links such as LinkedIn/GitHub make an IT CV more credible.",
+        },
+        "cv_length": {
+            "fix_en": "Keep the CV focused, usually 400-700 words for an early/mid-career IT profile.",
+            "meaning_vi": "CV nên đủ chi tiết nhưng không lan man; ưu tiên kinh nghiệm và dự án liên quan trực tiếp tới JD.",
+            "meaning_en": "Keep the CV detailed but focused on experience and projects relevant to the JD.",
+        },
     }
-    return fixes.get(code, "Xem xét lại phần này và cải thiện theo gợi ý trong báo cáo.")
+    return fixes.get(code, {
+        "fix_en": "Review this section and improve it based on the report evidence.",
+        "meaning_vi": "Hãy xem lại phần này và chỉnh theo dẫn chứng trong báo cáo.",
+        "meaning_en": "Review this section and revise it using the evidence in the report.",
+    })
 
 
 def _extract_missing_from_errors(errors: List[Dict]) -> List[str]:
