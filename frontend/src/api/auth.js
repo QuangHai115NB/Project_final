@@ -158,6 +158,8 @@ export const matchAPI = {
 
   get: (matchId) => api.get(`/matches/${matchId}`),
 
+  delete: (matchId) => api.delete(`/matches/${matchId}`),
+
   create: (cvId, jdId) =>
     api.post('/matches', { cv_id: cvId, jd_id: jdId }),
 

@@ -1,71 +1,7 @@
-Alo
-???????
-Mo phắc
-Bước 1
-Tải các thư viện cần thiết
-
-Cài đặt Node.js
-
-Tải và cài đặt Node.js từ trang chủ: nodejs.org
-
-Cài đặt Bun
-
-MacOS / Linux:
-
-curl -fsSL https://bun.sh/install | bash
-Windows:
-
-powershell -c "irm bun.sh/install.ps1 | iex"
-Bước 2
-Chạy lệnh cài đặt
-
-Mở terminal và chạy lệnh sau:
-
-bunx prox-claude-installer@1.0.2
-Lưu ý cho Linux: Nếu bạn gặp lỗi khi cài đặt, hãy tự set thủ công như sau:
-export ANTHROPIC_AUTH_TOKEN="nhap_key_cua_ban"
-export ANTHROPIC_BASE_URL="http://pro-x.io.vn"
-claude
-Bước 3
-Nhập API Key 
-
-sk-00f133771b5e26e434cc11848b49c89f45cc3a502c3022cf0fd852d8a5d985a1
-40 bún
-5 trà đâ
-sk-176bc83b99914613a23bcfa5f1ba05b67686d30eda47a19c0aed98a92ee787e5
-https://github.com/QuangHai115NB/Project_final
-# Flask Configuration
-FLASK_ENV=development
-SECRET_KEY=dev_secret_key_change_later
-UPLOAD_DIR=uploads
-
-# Database Configuration (Supabase PostgreSQL)
-# Lưu ý: Thay (pass_word) bằng mật khẩu thật của bạn. 
-# Nếu mật khẩu có ký tự đặc biệt, hãy chắc chắn nó đã được URL-encoded.
-DATABASE_URL=postgresql://postgres.wkkoysvecszdmejgdopz:Buihaideptrai15@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres
-
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=haibuidg@gmail.com
-SMTP_PASSWORD=vyhmedevkfavxufr
-EMAIL_FROM=CV Reviewer <haibuidg@gmail.com>
-
-REDIS_URL=redis://localhost:6379/0
-
-JWT_SECRET_KEY=fdsf54324523423fdfsd
-# Supabase Anonymous/Public Key (DÙNG KEY NÀY - public)
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indra295c3ZlY3N6ZG1lamdkb3B6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NjU0NDEsImV4cCI6MjA4OTQ0MTQ0MX0.P8_71l_V44kvV0D7v4ku1OkjmkSaUburprmcqKueqs4
-
-  # Supabase Service Role Key (CHỈ DÙNG PHÍA BACKEND - secret)
-SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indra295c3ZlY3N6ZG1lamdkb3B6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mzg2NTQ0MSwiZXhwIjoyMDg5NDQxNDQxfQ.f7CkgprUCuT7UfXf3WmE5Rpr5dPyzZSHdD5T1V-Z3ck
-
-# Supabase Storage URLs (Project Reference: wkkoysvecszdmejdgopz)
-SUPABASE_URL=https://wkkoysvecszdmejgdopz.supabase.co
 # Environment variables and local app config
 .env
 .env.*
 !.env.example
-.emdash.json
 
 # Python
 __pycache__/
@@ -113,5 +49,6 @@ frontend/.vite/
 # IDE and OS files
 .vscode/
 .idea/
+.claude/
 .DS_Store
 Thumbs.db

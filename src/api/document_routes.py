@@ -1,10 +1,8 @@
-import os
-from flask import Blueprint, request, jsonify, current_app, make_response, g
+from flask import Blueprint, request, jsonify, g
 from werkzeug.utils import secure_filename
 from src.core.dependencies import require_auth
 from src.db.database import SessionLocal
 from src.db.models import User, CVDocument, JDDocument, MatchHistory
-from src.services.pdf_extractor import extract_text_from_pdf
 from src.services.text_preprocess import clean_text
 from src.services.section_parser import parse_sections
 from src.services.rule_checker import run_rule_checks
@@ -18,7 +16,9 @@ from src.services.storage import (
     upload_jd as storage_upload_jd,
     delete_cv as storage_delete_cv,
     delete_jd as storage_delete_jd,
-    SUPABASE_URL,  # Dùng public URL thay vì signed URL
+    BUCKET_CV,
+    BUCKET_JD,
+    create_signed_url,
 )
 doc_bp = Blueprint("documents", __name__, url_prefix="/api")
 
@@ -29,6 +29,14 @@ def remove_null_bytes(text: str) -> str:
     if text:
         return text.replace('\x00', '')
     return ""
+
+
+def _pagination_args(default_limit: int = 10, max_limit: int = 50) -> tuple[int, int]:
+    limit = request.args.get("limit", default_limit, type=int) or default_limit
+    offset = request.args.get("offset", 0, type=int) or 0
+    limit = max(1, min(limit, max_limit))
+    offset = max(0, offset)
+    return limit, offset
 
 
 # --- API ROUTES: CV ---
@@ -150,6 +158,10 @@ def delete_cv(cv_id):
             except Exception:
                 pass  # Không crash nếu xóa file thất bại
 
+        db.query(MatchHistory).filter(
+            MatchHistory.cv_id == cv_id,
+            MatchHistory.user_id == g.user_id,
+        ).delete(synchronize_session=False)
         db.delete(cv_record)
         db.commit()
 
@@ -290,6 +302,10 @@ def delete_jd(jd_id):
             except Exception:
                 pass
 
+        db.query(MatchHistory).filter(
+            MatchHistory.jd_id == jd_id,
+            MatchHistory.user_id == g.user_id,
+        ).delete(synchronize_session=False)
         db.delete(jd_record)
         db.commit()
 
@@ -390,11 +406,14 @@ def create_match():
 @require_auth
 def list_matches():
     """Lấy danh sách lịch sử so khớp của user."""
-    limit = request.args.get("limit", 20, type=int)
-    offset = request.args.get("offset", 0, type=int)
+    limit, offset = _pagination_args(default_limit=10, max_limit=50)
 
     db = SessionLocal()
     try:
+        total = db.query(MatchHistory).filter(
+            MatchHistory.user_id == g.user_id
+        ).count()
+
         matches = db.query(
             MatchHistory.id,
             MatchHistory.similarity_score,
@@ -421,7 +440,14 @@ def list_matches():
                     "created_at": m.created_at.isoformat() if m.created_at else None,
                 }
                 for m in matches
-            ]
+            ],
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": total,
+                "has_next": offset + limit < total,
+                "has_prev": offset > 0,
+            },
         }), 200
 
     except Exception as e:
@@ -459,6 +485,31 @@ def get_match_detail(match_id):
         }), 200
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.close()
+
+
+@doc_bp.delete("/matches/<match_id>")
+@require_auth
+def delete_match_report(match_id):
+    """Delete one match report from the current user's history."""
+    db = SessionLocal()
+    try:
+        match_record = db.query(MatchHistory).filter(
+            MatchHistory.id == match_id,
+            MatchHistory.user_id == g.user_id,
+        ).first()
+
+        if not match_record:
+            return jsonify({"error": "Match not found"}), 404
+
+        db.delete(match_record)
+        db.commit()
+        return jsonify({"message": "Match report deleted successfully"}), 200
+
+    except Exception as e:
+        db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         db.close()
@@ -535,8 +586,8 @@ def get_cv_signed_url(cv_id):
             return jsonify({"error": "CV file not found in storage"}), 404
 
         # Dùng public URL trực tiếp để Google Docs Viewer / iframe có thể đọc
-        public_url = f"{SUPABASE_URL}/storage/v1/object/public/cv-uploads/{cv_record.storage_path}"
-        return jsonify({"url": public_url}), 200
+        url = create_signed_url(BUCKET_CV, cv_record.storage_path, expires_in=3600)
+        return jsonify({"url": url, "expires_in": 3600}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -568,8 +619,8 @@ def get_jd_signed_url(jd_id):
             return jsonify({"error": "JD file not found in storage"}), 404
 
         # Dùng public URL trực tiếp để iframe có thể đọc
-        public_url = f"{SUPABASE_URL}/storage/v1/object/public/jd-uploads/{jd_record.storage_path}"
-        return jsonify({"url": public_url}), 200
+        url = create_signed_url(BUCKET_JD, jd_record.storage_path, expires_in=3600)
+        return jsonify({"url": url, "expires_in": 3600}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

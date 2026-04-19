@@ -8,21 +8,28 @@ from sqlalchemy.exc import OperationalError
 load_dotenv()
 
 # Lấy chuỗi kết nối từ .env
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///cv_review.db")
 
 # Điều khiển echo qua env variable (SQL_ECHO=true để bật logging SQL)
 SQL_ECHO = os.getenv("SQL_ECHO", "false").lower() in ("true", "1", "yes")
 
 # Tạo kết nối với PostgreSQL Supabase với connection pool tuning
-engine = create_engine(
-    DATABASE_URL,
-    echo=SQL_ECHO,
-    future=True,
-    pool_size=20,
-    max_overflow=30,
-    pool_pre_ping=True,
-    pool_recycle=3600,
-)
+engine_options = {
+    "echo": SQL_ECHO,
+    "future": True,
+    "pool_pre_ping": True,
+}
+
+if DATABASE_URL.startswith("sqlite"):
+    engine_options["connect_args"] = {"check_same_thread": False}
+else:
+    engine_options.update({
+        "pool_size": 20,
+        "max_overflow": 30,
+        "pool_recycle": 3600,
+    })
+
+engine = create_engine(DATABASE_URL, **engine_options)
 
 # Tạo SessionLocal để thao tác với database
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
