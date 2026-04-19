@@ -18,7 +18,7 @@ from src.services.storage import (
     delete_jd as storage_delete_jd,
     BUCKET_CV,
     BUCKET_JD,
-    create_signed_url,
+    create_access_url,
 )
 doc_bp = Blueprint("documents", __name__, url_prefix="/api")
 
@@ -586,8 +586,8 @@ def get_cv_signed_url(cv_id):
             return jsonify({"error": "CV file not found in storage"}), 404
 
         # Dùng public URL trực tiếp để Google Docs Viewer / iframe có thể đọc
-        url = create_signed_url(BUCKET_CV, cv_record.storage_path, expires_in=3600)
-        return jsonify({"url": url, "expires_in": 3600}), 200
+        url, mode = create_access_url(BUCKET_CV, cv_record.storage_path, expires_in=3600)
+        return jsonify({"url": url, "expires_in": 3600, "mode": mode}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -619,8 +619,8 @@ def get_jd_signed_url(jd_id):
             return jsonify({"error": "JD file not found in storage"}), 404
 
         # Dùng public URL trực tiếp để iframe có thể đọc
-        url = create_signed_url(BUCKET_JD, jd_record.storage_path, expires_in=3600)
-        return jsonify({"url": url, "expires_in": 3600}), 200
+        url, mode = create_access_url(BUCKET_JD, jd_record.storage_path, expires_in=3600)
+        return jsonify({"url": url, "expires_in": 3600, "mode": mode}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

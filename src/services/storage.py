@@ -306,6 +306,24 @@ def create_signed_url(bucket: str, storage_path: str, expires_in: int = 3600) ->
     return token_path
 
 
+def create_public_url(bucket: str, storage_path: str) -> str:
+    """Return the direct public object URL for buckets configured as public."""
+    if not SUPABASE_URL:
+        raise RuntimeError("SUPABASE_URL phải được set trong .env")
+    return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{storage_path}"
+
+
+def create_access_url(bucket: str, storage_path: str, expires_in: int = 3600) -> tuple[str, str]:
+    """
+    Prefer a signed URL for private buckets, but fall back to the public URL
+    so existing demo buckets still work if signing is unavailable.
+    """
+    try:
+        return create_signed_url(bucket, storage_path, expires_in=expires_in), "signed"
+    except Exception:
+        return create_public_url(bucket, storage_path), "public"
+
+
 def delete_cv(storage_path: str) -> bool:
     """Xóa CV file khỏi Supabase Storage."""
     return _delete_file_from_storage(BUCKET_CV, storage_path)

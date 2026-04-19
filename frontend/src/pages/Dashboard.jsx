@@ -36,7 +36,7 @@ function CvDetailModal({ cv, onClose }) {
     setUrl(null);
     cvAPI.getSignedUrl(cv.id)
       .then(({ data }) => setUrl(data.url))
-      .catch(() => setError(t('dashboard.fileErrorCv')))
+      .catch((err) => setError(err.response?.data?.error || t('dashboard.fileErrorCv')))
       .finally(() => setLoading(false));
   }, [cv?.id, t]);
 
@@ -106,7 +106,7 @@ function JdDetailModal({ jd, onClose }) {
 
     jdAPI.getSignedUrl(jd.id)
       .then(({ data }) => setUrl(data.url))
-      .catch(() => setError(t('dashboard.fileErrorJd')))
+      .catch((err) => setError(err.response?.data?.error || t('dashboard.fileErrorJd')))
       .finally(() => setLoading(false));
   }, [jd?.id, t]);
 
