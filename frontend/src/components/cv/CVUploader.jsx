@@ -56,7 +56,7 @@ export default function CVUploader({ onSuccess }) {
 
   return (
     <Card className="space-y-4">
-      <h3 className="text-lg font-bold text-gray-800">{t('upload.cvTitle')}</h3>
+      <h3 className="text-lg font-bold text-gray-800 dark:text-white">{t('upload.cvTitle')}</h3>
 
       {/* Drop zone */}
       <div
@@ -66,7 +66,7 @@ export default function CVUploader({ onSuccess }) {
         onClick={() => fileRef.current?.click()}
         className={`
           border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
-          ${dragOver ? 'border-primary bg-blue-50' : 'border-gray-300 hover:border-primary/50 hover:bg-gray-50'}
+          ${dragOver ? 'border-primary bg-blue-50 dark:bg-sky-950/40' : 'border-gray-300 hover:border-primary/50 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800/70'}
         `}
       >
         <input ref={fileRef} type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
@@ -74,12 +74,12 @@ export default function CVUploader({ onSuccess }) {
         {file ? (
           <div>
             <p className="font-semibold text-primary">{file.name}</p>
-            <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">{(file.size / 1024).toFixed(1)} KB</p>
           </div>
         ) : (
           <div>
-            <p className="font-medium text-gray-700">{t('upload.dragPdf')}</p>
-            <p className="text-sm text-gray-500">{t('upload.clickChoose')}</p>
+            <p className="font-medium text-gray-700 dark:text-slate-200">{t('upload.dragPdf')}</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">{t('upload.clickChoose')}</p>
           </div>
         )}
       </div>
@@ -90,17 +90,17 @@ export default function CVUploader({ onSuccess }) {
         placeholder={t('upload.cvPlaceholder')}
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
+        className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary/50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
       />
 
       {/* Progress bar */}
       {uploading && (
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-800">
           <div className="bg-primary h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
         </div>
       )}
 
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error && <p className="text-red-500 text-sm dark:text-rose-300">{error}</p>}
 
       <Button onClick={handleUpload} loading={uploading} disabled={!file} className="w-full">
         {uploading ? t('upload.uploading') : t('upload.uploadCv')}

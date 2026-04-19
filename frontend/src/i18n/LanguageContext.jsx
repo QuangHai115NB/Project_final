@@ -48,21 +48,27 @@ export function useLanguage() {
 
 export function LanguageToggle({ className = '' }) {
   const { language, setLanguage } = useLanguage();
+  const labels = {
+    vi: { flag: '🇻🇳', text: 'VI' },
+    en: { flag: '🇺🇸', text: 'EN' },
+  };
 
   return (
-    <div className={`inline-flex rounded border border-gray-200 bg-white p-1 shadow-sm ${className}`}>
+    <div className={`inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900 ${className}`}>
       {['vi', 'en'].map((lang) => (
         <button
           key={lang}
           type="button"
           onClick={() => setLanguage(lang)}
-          className={`rounded px-3 py-1 text-xs font-bold transition-colors ${
+          className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-bold transition-all ${
             language === lang
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-600 hover:bg-gray-100'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800'
           }`}
+          title={lang === 'vi' ? 'Tiếng Việt' : 'English'}
         >
-          {lang.toUpperCase()}
+          <span className="text-base leading-none" aria-hidden="true">{labels[lang].flag}</span>
+          <span>{labels[lang].text}</span>
         </button>
       ))}
     </div>

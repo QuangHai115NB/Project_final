@@ -46,10 +46,12 @@ export function ThemeToggle({ className = '' }) {
     <button
       type="button"
       onClick={toggleTheme}
-      className={`inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 ${className}`}
+      className={`inline-flex h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:bg-gray-50 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 ${className}`}
       aria-label={isDark ? t('theme.switchLight') : t('theme.switchDark')}
+      title={isDark ? t('theme.switchLight') : t('theme.switchDark')}
     >
-      {isDark ? t('theme.dark') : t('theme.light')}
+      <span className="text-base leading-none" aria-hidden="true">{isDark ? '🌙' : '☀️'}</span>
+      <span className="hidden sm:inline">{isDark ? t('theme.dark') : t('theme.light')}</span>
     </button>
   );
 }
