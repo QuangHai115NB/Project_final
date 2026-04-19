@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import { matchAPI } from '../api/auth';
 
 export function useMatchReport() {
   const [report, setReport] = useState(null);
@@ -10,10 +10,7 @@ export function useMatchReport() {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('access_token');
-      const { data } = await axios.get(`/api/matches/${matchId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const { data } = await matchAPI.get(matchId);
       setReport(data.report ?? data);
       return data;
     } catch (err) {
@@ -26,11 +23,7 @@ export function useMatchReport() {
   };
 
   const downloadDocx = async (matchId, filename = 'report.docx') => {
-    const token = localStorage.getItem('access_token');
-    const { data: blob } = await axios.get(`/api/matches/download/${matchId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      responseType: 'blob',
-    });
+    const { data: blob } = await matchAPI.download(matchId);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

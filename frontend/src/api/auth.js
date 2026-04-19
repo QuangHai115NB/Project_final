@@ -7,6 +7,20 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+let isRefreshing = false;
+let refreshQueue = [];
+
+function resolveRefreshQueue(error, token = null) {
+  refreshQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+    } else {
+      resolve(token);
+    }
+  });
+  refreshQueue = [];
+}
+
 // Interceptor: tự động attach token vào request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
@@ -21,8 +35,22 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
+
+      if (isRefreshing) {
+        try {
+          const token = await new Promise((resolve, reject) => {
+            refreshQueue.push({ resolve, reject });
+          });
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        } catch (refreshError) {
+          return Promise.reject(refreshError);
+        }
+      }
+
+      isRefreshing = true;
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         if (!refreshToken) throw new Error('No refresh token');
@@ -33,13 +61,18 @@ api.interceptors.response.use(
 
         localStorage.setItem('access_token', data.access_token);
         localStorage.setItem('refresh_token', data.refresh_token);
+        resolveRefreshQueue(null, data.access_token);
 
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
         return api(originalRequest);
-      } catch {
+      } catch (refreshError) {
+        resolveRefreshQueue(refreshError, null);
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         window.location.href = '/auth/login';
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
     return Promise.reject(error);
@@ -93,10 +126,7 @@ export const cvAPI = {
   delete: (cvId) => api.delete(`/cvs/delete/${cvId}`),
 
   getSignedUrl: (cvId) => {
-    const token = localStorage.getItem('access_token');
-    return axios.get(`/api/cvs/file/${cvId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    return api.get(`/cvs/file/${cvId}`);
   },
 };
 
@@ -117,10 +147,7 @@ export const jdAPI = {
   delete: (jdId) => api.delete(`/jds/delete/${jdId}`),
 
   getSignedUrl: (jdId) => {
-    const token = localStorage.getItem('access_token');
-    return axios.get(`/api/jds/file/${jdId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    return api.get(`/jds/file/${jdId}`);
   },
 };
 
@@ -135,9 +162,7 @@ export const matchAPI = {
     api.post('/matches', { cv_id: cvId, jd_id: jdId }),
 
   download: (matchId) => {
-    const token = localStorage.getItem('access_token');
-    return axios.get(`/api/matches/download/${matchId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    return api.get(`/matches/download/${matchId}`, {
       responseType: 'blob',
     });
   },
