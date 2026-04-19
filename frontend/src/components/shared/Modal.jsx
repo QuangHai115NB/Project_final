@@ -23,10 +23,10 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}>
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+      <div className={`relative max-h-[90vh] w-full overflow-y-auto rounded-lg bg-white shadow-2xl ${sizes[size]}`}>
+        <div className="sticky top-0 flex items-center justify-between rounded-t-lg border-b border-gray-100 bg-white px-6 py-4">
           <h2 className="text-xl font-bold text-gray-800">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+          <button onClick={onClose} className="text-2xl leading-none text-gray-400 hover:text-gray-600">×</button>
         </div>
         <div className="p-6">{children}</div>
       </div>

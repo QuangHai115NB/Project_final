@@ -1,27 +1,37 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMatchReport } from '../../hooks/useMatchReport';
-import { LoadingSpinner, Card, Button } from '../shared';
+import { LoadingSpinner, Card, Button, Modal } from '../shared';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 const TONES = {
   green: {
-    text: 'text-green-600',
+    text: 'text-green-700',
     bg: 'bg-green-50',
     border: 'border-green-200',
-    fill: '#10B981',
+    fill: '#059669',
   },
   amber: {
-    text: 'text-amber-600',
+    text: 'text-amber-700',
     bg: 'bg-amber-50',
     border: 'border-amber-200',
-    fill: '#F59E0B',
+    fill: '#D97706',
   },
   red: {
-    text: 'text-red-600',
+    text: 'text-red-700',
     bg: 'bg-red-50',
     border: 'border-red-200',
-    fill: '#EF4444',
+    fill: '#DC2626',
   },
 };
+
+const SCORE_ROWS = [
+  ['section_score', 'report.cvStructure'],
+  ['skill_score', 'report.skillCoverage'],
+  ['semantic_score', 'report.semanticMatch'],
+  ['keyword_score', 'report.keywordMatch'],
+  ['experience_score', 'report.experience'],
+  ['jd_structure_score', 'report.bulletQuality'],
+];
 
 function getTone(score, color) {
   if (color && TONES[color]) return TONES[color];
@@ -31,185 +41,356 @@ function getTone(score, color) {
   return TONES.red;
 }
 
-function formatScore(score) {
-  return `${(Number(score) || 0).toFixed(0)}/100`;
+function scoreValue(score) {
+  return Math.max(0, Math.min(100, Number(score) || 0));
 }
 
-function ScoreBar({ label, score, weight }) {
-  const val = Math.max(0, Math.min(100, Number(score) || 0));
+function getLocalizedValue(item, language, viKey, enKey, fallbackKey) {
+  if (!item) return '';
+  if (language === 'vi') {
+    return item[viKey] || item[fallbackKey] || item[enKey] || '';
+  }
+  return item[enKey] || item[fallbackKey] || item[viKey] || '';
+}
+
+function localizeSectionLabel(value, language) {
+  if (language !== 'vi') return value;
+  const sectionMap = {
+    Summary: 'Tóm tắt',
+    Skills: 'Kỹ năng',
+    Experience: 'Kinh nghiệm',
+    Projects: 'Dự án',
+    Education: 'Học vấn',
+    Certifications: 'Chứng chỉ',
+    Contact: 'Liên hệ',
+  };
+  return String(value || '')
+    .split('/')
+    .map((part) => sectionMap[part.trim()] || part.trim())
+    .join(' / ');
+}
+
+function localizeEvidenceItem(item, issueCode, language) {
+  if (issueCode === 'missing_metrics' && typeof item === 'string') {
+    if (language === 'en' && /Không|số liệu|bullet/.test(item)) {
+      return { excerpt: 'No Experience/Projects bullet contains measurable metrics.' };
+    }
+    if (language === 'vi') {
+      return item.replaceAll('bullet', 'dòng mô tả');
+    }
+  }
+
+  if (issueCode === 'contact_info' && typeof item === 'string') {
+    return item;
+  }
+
+  if (
+    language === 'vi'
+    && ['missing_sections', 'missing_recommended_sections'].includes(issueCode)
+    && typeof item === 'string'
+  ) {
+    return localizeSectionLabel(item, language);
+  }
+  return item;
+}
+
+function localizeContactItem(item, language, t) {
+  const key = String(item || '').trim();
+  const label = t(`contact.${key}`);
+  if (label !== `contact.${key}`) return label;
+  return language === 'vi' ? key.replace(/^has_/, '').replaceAll('_', ' ') : key.replace(/^has_/, '').replaceAll('_', ' ');
+}
+
+function cleanDisplayLine(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[\s\-*•●▪–—]+/, '')
+    .replace(/^\(?\s*(?:\d+|[a-zA-Z])[\).:-]\s*/, '')
+    .replace(/^[\s([{:;,.]+/, '')
+    .replace(/[\s)\]}:;,.]+$/, '')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')');
+}
+
+function normalizeUnmatchedJdLines(items = []) {
+  const seen = new Set();
+  return items
+    .map((item) => {
+      const rawLine = typeof item === 'object' ? item.jd_line || item.excerpt || '' : item;
+      const line = cleanDisplayLine(rawLine);
+      return {
+        jd_line: line,
+        best_cv_score: typeof item === 'object' ? item.best_cv_score : undefined,
+      };
+    })
+    .filter((item) => {
+      if (!/[A-Za-zÀ-ỹ0-9]/.test(item.jd_line)) return false;
+      if (item.jd_line.split(/\s+/).length < 4) return false;
+      const key = item.jd_line.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 5);
+}
+
+function removeEducationRequirement(items = []) {
+  return items.filter((item) => String(item).trim().toLowerCase() !== 'education');
+}
+
+function normalizeVisibleIssues(issues = []) {
+  return issues
+    .map((issue) => {
+      if (issue.code !== 'missing_sections') return issue;
+      const evidence = removeEducationRequirement(issue.evidence || []);
+      const details = removeEducationRequirement(issue.details || []);
+      return { ...issue, evidence, details };
+    })
+    .filter((issue) => {
+      if (issue.code !== 'missing_sections') return true;
+      return (issue.evidence || issue.details || []).length > 0;
+    });
+}
+
+function ScoreBar({ label, score, weight, t }) {
+  const val = scoreValue(score);
   const tone = getTone(val);
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="font-medium text-gray-700">{label}</span>
-        <span className="shrink-0 font-bold text-gray-800">
-          {formatScore(val)}
-          {weight != null && (
-            <span className="ml-2 text-xs font-medium text-gray-500">
-              weight {Number(weight).toFixed(0)}%
-            </span>
-          )}
-        </span>
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+        <span className="font-semibold text-gray-800">{label}</span>
+        <span className="shrink-0 font-bold text-gray-900">{val.toFixed(0)}/100</span>
       </div>
-      <div className="h-2.5 w-full rounded bg-gray-200">
+      <div className="h-2.5 w-full rounded bg-gray-100">
         <div
           className="h-2.5 rounded transition-all duration-700"
           style={{ width: `${val}%`, backgroundColor: tone.fill }}
         />
       </div>
+      {weight != null && (
+        <p className="mt-2 text-xs text-gray-500">
+          {t('report.weight', { value: Number(weight).toFixed(0) })}
+        </p>
+      )}
     </div>
   );
 }
 
-function EvidenceItem({ item }) {
+function EvidenceItem({ item, language, t }) {
   if (item == null) return null;
 
   if (typeof item === 'object') {
-    const location = [item.section, item.bullet_index ? `bullet #${item.bullet_index}` : null]
+    const location = [
+      item.section ? localizeSectionLabel(item.section, language) : null,
+      item.bullet_index ? t('evidence.itemLine', { index: item.bullet_index }) : null,
+    ]
       .filter(Boolean)
       .join(' - ');
 
     return (
-      <li className="rounded border border-gray-200 bg-white p-3">
+      <li className="rounded-lg border border-gray-200 bg-white p-3">
         {location && (
-          <div className="mb-1 text-xs font-semibold uppercase text-gray-500">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
             {location}
           </div>
         )}
-        <p className="text-sm text-gray-800">{item.excerpt || JSON.stringify(item)}</p>
-        {item.reason && <p className="mt-1 text-xs text-gray-500">{item.reason}</p>}
+        <p className="text-sm text-gray-800">{item.excerpt || item.jd_line || JSON.stringify(item)}</p>
+        {item.reason && (
+          <p className="mt-1 text-xs text-gray-500">
+            {language === 'vi' && item.reason === 'No measurable result or scale found.'
+              ? t('evidence.metricReason')
+              : item.reason}
+          </p>
+        )}
       </li>
     );
   }
 
   return (
-    <li className="rounded border border-gray-200 bg-white p-3 text-sm text-gray-800">
+    <li className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-800">
       {String(item)}
     </li>
   );
 }
 
-function IssueCard({ issue }) {
-  const severityStyles = {
-    high: {
-      bg: 'bg-red-50',
-      border: 'border-red-200',
-      badge: 'bg-red-100 text-red-700',
-      label: 'HIGH',
-    },
-    medium: {
-      bg: 'bg-amber-50',
-      border: 'border-amber-200',
-      badge: 'bg-amber-100 text-amber-700',
-      label: 'MEDIUM',
-    },
-    low: {
-      bg: 'bg-gray-50',
-      border: 'border-gray-200',
-      badge: 'bg-gray-100 text-gray-600',
-      label: 'LOW',
-    },
-  };
-  const style = severityStyles[issue.severity] || severityStyles.low;
-  const evidence = issue.evidence || issue.details || [];
-
-  return (
-    <div className={`${style.bg} border ${style.border} rounded p-4`}>
-      <div className="mb-2 flex flex-wrap items-start gap-2">
-        <span className={`${style.badge} rounded px-2 py-0.5 text-xs font-bold`}>
-          {style.label}
-        </span>
-        <h4 className="font-semibold text-gray-800">
-          {issue.title || issue.code?.replace(/_/g, ' ')}
-        </h4>
-        {issue.section && (
-          <span className="rounded bg-white px-2 py-0.5 text-xs text-gray-500">
-            {issue.section}
-          </span>
-        )}
-      </div>
-
-      {issue.explanation && <p className="mb-3 text-sm text-gray-700">{issue.explanation}</p>}
-
-      {evidence.length > 0 && (
-        <div className="mb-3">
-          <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Dẫn chứng</p>
-          <ul className="space-y-2">
-            {evidence.slice(0, 4).map((item, index) => (
-              <EvidenceItem key={index} item={item} />
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {issue.suggested_fix && (
-        <div className="rounded border border-gray-200 bg-white p-3">
-          <p className="mb-1 text-xs font-semibold uppercase text-blue-700">Cách sửa</p>
-          <p className="text-sm text-gray-700">{issue.suggested_fix}</p>
-        </div>
-      )}
-
-      {issue.optional_rewrite && (
-        <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3">
-          <p className="mb-1 text-xs font-semibold uppercase text-blue-700">Gợi ý viết lại</p>
-          <p className="text-sm text-gray-800">{issue.optional_rewrite}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PillList({ items = [], colorClass = 'bg-gray-100 text-gray-700' }) {
-  if (!items.length) return <p className="text-sm text-gray-500">Không có dữ liệu.</p>;
+function PillList({ items = [], colorClass = 'bg-gray-100 text-gray-700', t, formatItem }) {
+  if (!items.length) return <p className="text-sm text-gray-500">{t('common.noData')}</p>;
   return (
     <div className="flex flex-wrap gap-2">
       {items.map((item, index) => (
         <span key={`${item}-${index}`} className={`${colorClass} rounded px-2 py-1 text-xs font-medium`}>
-          {item}
+          {formatItem ? formatItem(item) : item}
         </span>
       ))}
     </div>
   );
 }
 
-function SectionAnalysis({ sectionAnalysis }) {
-  if (!sectionAnalysis) return null;
+function IssueCard({ issue, language, t }) {
+  const severityStyles = {
+    high: 'border-red-200 bg-red-50 text-red-700',
+    medium: 'border-amber-200 bg-amber-50 text-amber-700',
+    low: 'border-gray-200 bg-gray-50 text-gray-700',
+  };
+  const severityLabel = {
+    high: t('report.high'),
+    medium: t('report.medium'),
+    low: t('report.low'),
+  };
+  const rawEvidence = issue.evidence || issue.details || [];
+  const evidence = issue.code === 'uncovered_responsibilities'
+    ? normalizeUnmatchedJdLines(rawEvidence).map((item) => item.jd_line)
+    : rawEvidence.map((item) => (
+      issue.code === 'contact_info' ? localizeContactItem(item, language, t) : item
+    ));
+  const title = t(`issue.${issue.code}.title`) || issue.title || issue.code?.replace(/_/g, ' ');
+  const explanation = getLocalizedValue(issue, language, 'explanation_vi', 'explanation_en', 'explanation');
+  const cvWording = issue.optional_rewrite || issue.suggested_fix_en || '';
+  const meaning = issue.optional_rewrite
+    ? getLocalizedValue(issue, language, 'optional_rewrite_meaning_vi', 'optional_rewrite_meaning_en', 'fix_meaning_vi')
+    : getLocalizedValue(issue, language, 'fix_meaning_vi', 'fix_meaning_en', 'suggested_fix');
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className={`rounded px-2 py-1 text-xs font-bold ${severityStyles[issue.severity] || severityStyles.low}`}>
+          {severityLabel[issue.severity] || severityLabel.low}
+        </span>
+        {issue.section && (
+          <span className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-500">
+            {localizeSectionLabel(issue.section, language)}
+          </span>
+        )}
+      </div>
+
+      <h4 className="text-base font-bold text-gray-900">{title}</h4>
+      {explanation && <p className="mt-2 text-sm leading-6 text-gray-600">{explanation}</p>}
+
+      {evidence.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">
+            {issue.code === 'contact_info' ? t('report.addSuggestion') : t('report.evidence')}
+          </p>
+          <ul className="space-y-2">
+            {evidence.slice(0, 4).map((item, index) => (
+              <EvidenceItem
+                key={index}
+                item={localizeEvidenceItem(item, issue.code, language)}
+                language={language}
+                t={t}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(cvWording || meaning) && (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {cvWording && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-blue-700">{t('report.fix')}</p>
+              <p className="text-sm leading-6 text-gray-900">{cvWording}</p>
+            </div>
+          )}
+          {meaning && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-600">{t('report.meaning')}</p>
+              <p className="text-sm leading-6 text-gray-700">{meaning}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScoringGuide({ isOpen, onClose, t }) {
+  const items = [
+    'guide.section',
+    'guide.skill',
+    'guide.semantic',
+    'guide.keyword',
+    'guide.experience',
+    'guide.structure',
+  ];
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={t('guide.title')} size="lg">
+      <div className="space-y-4">
+        <p className="text-sm leading-6 text-gray-600">{t('guide.intro')}</p>
+        <div className="space-y-3">
+          {items.map((key) => (
+            <div key={key} className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-700">
+              {t(key)}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function RewriteExamples({ examples = [], language, t }) {
+  if (!examples.length) return null;
   return (
     <Card>
-      <h3 className="mb-4 font-bold text-gray-800">Cấu trúc CV</h3>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <p className="mb-2 text-sm font-semibold text-green-700">Đã nhận diện</p>
-          <PillList items={sectionAnalysis.sections_found || []} colorClass="bg-green-100 text-green-700" />
-        </div>
-        <div>
-          <p className="mb-2 text-sm font-semibold text-red-700">Còn thiếu</p>
-          <PillList
-            items={sectionAnalysis.missing_required_sections || []}
-            colorClass="bg-red-100 text-red-700"
-          />
-        </div>
+      <h3 className="mb-4 font-bold text-gray-900">{t('report.rewriteExamples')}</h3>
+      <div className="space-y-3">
+        {examples.slice(0, 3).map((example, index) => (
+          <div key={index} className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="mb-2 flex flex-wrap gap-2">
+              <span className="rounded bg-blue-100 px-2 py-1 text-xs font-bold text-blue-700">
+                {localizeSectionLabel(example.target_section || 'CV', language)}
+              </span>
+              <span className="text-sm font-semibold text-gray-900">{example.label}</span>
+            </div>
+            <p className="text-sm leading-6 text-gray-900">{example.template}</p>
+            <div className="mt-3 rounded-lg bg-gray-50 p-3">
+              <p className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">{t('report.meaning')}</p>
+              <p className="text-sm leading-6 text-gray-600">
+                {language === 'vi' ? example.meaning_vi : example.meaning_en}
+              </p>
+            </div>
+          </div>
+        ))}
       </div>
     </Card>
   );
 }
 
-function RewriteExamples({ examples = [] }) {
-  if (!examples.length) return null;
+function UnmatchedJdRequirements({ items = [], t }) {
+  const cleanItems = normalizeUnmatchedJdLines(items);
+  if (!cleanItems.length) return null;
+
   return (
-    <Card>
-      <h3 className="mb-4 font-bold text-gray-800">Mẫu viết lại</h3>
+    <Card className="border-l-4 border-l-amber-500">
+      <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h3 className="font-bold text-gray-900">{t('report.uncoveredJd')}</h3>
+          <p className="mt-1 text-sm leading-6 text-gray-600">{t('report.uncoveredJdHelp')}</p>
+        </div>
+        <span className="w-fit rounded bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
+          {t('report.needsEvidence')}
+        </span>
+      </div>
+
       <div className="space-y-3">
-        {examples.slice(0, 3).map((example, index) => (
-          <div key={index} className="rounded border border-gray-200 p-3">
-            <div className="mb-1 flex flex-wrap gap-2">
-              <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                {example.target_section || 'CV'}
+        {cleanItems.map((item, index) => (
+          <div key={`${item.jd_line}-${index}`} className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="rounded bg-white px-2 py-1 text-xs font-bold text-amber-800">
+                JD #{index + 1}
               </span>
-              <span className="text-sm font-semibold text-gray-800">{example.label}</span>
+              {item.best_cv_score != null && (
+                <span className="text-xs font-medium text-amber-800">
+                  {t('report.closestCvMatch', { value: Number(item.best_cv_score).toFixed(0) })}
+                </span>
+              )}
             </div>
-            <p className="text-sm text-gray-700">{example.template}</p>
+            <p className="text-sm leading-6 text-gray-900">{item.jd_line}</p>
           </div>
         ))}
       </div>
@@ -219,6 +400,8 @@ function RewriteExamples({ examples = [] }) {
 
 export default function MatchReport({ matchId, compact = false }) {
   const { report, loading, error, fetchReport, downloadDocx } = useMatchReport();
+  const { language, t } = useLanguage();
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (matchId) {
@@ -229,14 +412,14 @@ export default function MatchReport({ matchId, compact = false }) {
   if (loading) {
     return (
       <div className="flex justify-center py-10">
-        <LoadingSpinner text="Đang tải báo cáo..." />
+        <LoadingSpinner text={t('report.loading')} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded border border-red-200 bg-red-50 p-4 text-red-600">
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-600">
         {error}
       </div>
     );
@@ -257,19 +440,27 @@ export default function MatchReport({ matchId, compact = false }) {
 
   const finalScore = Number(summary.final_score) || 0;
   const scoreTone = getTone(finalScore, summary.color);
+  const visibleIssues = normalizeVisibleIssues(issues);
+  const visibleMissingSections = removeEducationRequirement(
+    sectionAnalysis?.missing_required_sections || [],
+  );
+
+  const scoreRows = SCORE_ROWS.filter(
+    ([key]) => scoreWeights[key] != null || scoreBreakdown[key] != null,
+  );
 
   if (compact) {
     return (
       <Card className="space-y-3">
         <div className="flex items-center justify-between gap-4">
-          <h3 className="font-bold text-gray-800">Báo cáo #{matchId}</h3>
+          <h3 className="font-bold text-gray-900">{t('report.title', { id: matchId })}</h3>
           <div className="flex items-center gap-2">
             <span className={`text-2xl font-bold ${scoreTone.text}`}>{finalScore.toFixed(0)}</span>
             <span className="text-gray-400">/100</span>
           </div>
         </div>
-        {issues.length > 0 && (
-          <p className="text-sm text-gray-500">{issues.length} vấn đề được phát hiện</p>
+        {visibleIssues.length > 0 && (
+          <p className="text-sm text-gray-500">{t('report.issuesFound', { count: visibleIssues.length })}</p>
         )}
       </Card>
     );
@@ -277,87 +468,110 @@ export default function MatchReport({ matchId, compact = false }) {
 
   return (
     <div className="space-y-6">
-      <div className={`${scoreTone.bg} ${scoreTone.border} rounded border p-8 text-center`}>
-        <div className={`text-6xl font-black ${scoreTone.text}`}>{finalScore.toFixed(0)}</div>
-        <div className="mt-1 text-xl font-bold text-gray-700">/ 100</div>
-        <div className={`mt-2 text-sm font-bold uppercase ${scoreTone.text}`}>
-          {summary.label || 'N/A'}
+      <div className={`rounded-lg border ${scoreTone.border} ${scoreTone.bg} p-6`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">{t('dashboard.matchReport')}</p>
+            <div className="mt-2 flex items-end gap-3">
+              <span className={`text-6xl font-black ${scoreTone.text}`}>{finalScore.toFixed(0)}</span>
+              <span className="pb-2 text-xl font-bold text-gray-700">/100</span>
+            </div>
+            <p className="mt-2 text-sm text-gray-600">{t('report.scoreNote')}</p>
+          </div>
+          <Button variant="outline" onClick={() => setShowGuide(true)} className="bg-white">
+            {t('report.scoringGuide')}
+          </Button>
         </div>
-        <p className="mt-3 text-sm text-gray-600">
-          Điểm cuối được tính trực tiếp từ breakdown và weight bên dưới.
-        </p>
       </div>
 
       <Card className="space-y-4">
-        <h3 className="font-bold text-gray-800">Chi tiết điểm số</h3>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-bold text-gray-900">{t('report.scoreBreakdown')}</h3>
+        </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <ScoreBar label="Cấu trúc CV" score={scoreBreakdown.section_score} weight={scoreWeights.section_score} />
-          <ScoreBar label="Skill Coverage" score={scoreBreakdown.skill_score} weight={scoreWeights.skill_score} />
-          <ScoreBar label="Semantic Match" score={scoreBreakdown.semantic_score} weight={scoreWeights.semantic_score} />
-          <ScoreBar label="Keyword Match" score={scoreBreakdown.keyword_score} weight={scoreWeights.keyword_score} />
-          <ScoreBar label="Experience" score={scoreBreakdown.experience_score} weight={scoreWeights.experience_score} />
-          <ScoreBar
-            label="Bullet Quality"
-            score={scoreBreakdown.jd_structure_score ?? scoreBreakdown.structure_score}
-            weight={scoreWeights.jd_structure_score}
-          />
+          {scoreRows.map(([key, labelKey]) => (
+            <ScoreBar
+              key={key}
+              label={t(labelKey)}
+              score={scoreBreakdown[key]}
+              weight={scoreWeights[key]}
+              t={t}
+            />
+          ))}
         </div>
       </Card>
 
       {skillsSummary && (
         <Card>
-          <h3 className="mb-4 font-bold text-gray-800">Skills Summary</h3>
-          <div className="mb-4 text-sm text-gray-600">
-            Required coverage: <span className="font-bold">{Number(skillsSummary.required_coverage_pct || 0).toFixed(0)}%</span>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <p className="mb-2 text-sm font-semibold text-green-700">
-                Matched required ({skillsSummary.matched_required?.length || 0})
+          <h3 className="mb-2 font-bold text-gray-900">{t('report.skillsSummary')}</h3>
+          <p className="mb-4 text-sm text-gray-600">
+            {t('report.requiredCoverage')}: <span className="font-bold">{Number(skillsSummary.required_coverage_pct || 0).toFixed(0)}%</span>
+          </p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+              <p className="mb-2 text-sm font-bold text-green-800">
+                {t('report.matchedRequired', { count: skillsSummary.matched_required?.length || 0 })}
               </p>
-              <PillList items={skillsSummary.matched_required || []} colorClass="bg-green-100 text-green-700" />
+              <PillList items={skillsSummary.matched_required || []} colorClass="bg-white text-green-700 border border-green-200" t={t} />
             </div>
-            <div>
-              <p className="mb-2 text-sm font-semibold text-red-700">
-                Missing required ({skillsSummary.missing_required?.length || 0})
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+              <p className="mb-2 text-sm font-bold text-red-800">
+                {t('report.missingRequired', { count: skillsSummary.missing_required?.length || 0 })}
               </p>
-              <PillList items={skillsSummary.missing_required || []} colorClass="bg-red-100 text-red-700" />
+              <PillList items={skillsSummary.missing_required || []} colorClass="bg-white text-red-700 border border-red-200" t={t} />
             </div>
           </div>
         </Card>
       )}
 
-      <SectionAnalysis sectionAnalysis={sectionAnalysis} />
-
-      {semanticAnalysis?.unmatched_jd_lines?.length > 0 && (
+      {sectionAnalysis && (
         <Card>
-          <h3 className="mb-4 font-bold text-gray-800">JD chưa được CV cover</h3>
-          <ul className="space-y-2">
-            {semanticAnalysis.unmatched_jd_lines.slice(0, 3).map((item, index) => (
-              <EvidenceItem key={index} item={item.jd_line || item} />
-            ))}
-          </ul>
+          <h3 className="mb-4 font-bold text-gray-900">{t('report.sections')}</h3>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div>
+              <p className="mb-2 text-sm font-bold text-gray-700">{t('report.sectionsFound')}</p>
+              <PillList
+                items={sectionAnalysis.sections_found || []}
+                colorClass="bg-blue-50 text-blue-700 border border-blue-200"
+                t={t}
+                formatItem={(item) => localizeSectionLabel(item, language)}
+              />
+            </div>
+            <div>
+              <p className="mb-2 text-sm font-bold text-gray-700">{t('report.sectionsMissing')}</p>
+              <PillList
+                items={visibleMissingSections}
+                colorClass="bg-red-50 text-red-700 border border-red-200"
+                t={t}
+                formatItem={(item) => localizeSectionLabel(item, language)}
+              />
+            </div>
+          </div>
         </Card>
       )}
 
-      {issues.length > 0 && (
+      <UnmatchedJdRequirements items={semanticAnalysis?.unmatched_jd_lines || []} t={t} />
+
+      {visibleIssues.length > 0 && (
         <div className="space-y-3">
-          <h3 className="font-bold text-gray-800">Vấn đề cần sửa ({issues.length})</h3>
-          {issues.map((issue, index) => (
-            <IssueCard key={`${issue.code}-${index}`} issue={issue} />
+          <h3 className="font-bold text-gray-900">{t('report.issues', { count: visibleIssues.length })}</h3>
+          {visibleIssues.map((issue, index) => (
+            <IssueCard key={`${issue.code}-${index}`} issue={issue} language={language} t={t} />
           ))}
         </div>
       )}
 
-      <RewriteExamples examples={rewriteExamples} />
+      <RewriteExamples examples={rewriteExamples} language={language} t={t} />
 
       <Button
         variant="outline"
-        className="w-full"
+        className="w-full bg-white"
         onClick={() => downloadDocx(matchId, `report_${matchId}.docx`)}
       >
-        Tải báo cáo Word (.docx)
+        {t('common.downloadWord')}
       </Button>
+
+      <ScoringGuide isOpen={showGuide} onClose={() => setShowGuide(false)} t={t} />
     </div>
   );
 }
