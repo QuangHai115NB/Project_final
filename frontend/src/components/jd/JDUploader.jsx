@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react';
 import { jdAPI } from '../../api/auth';
 import { Button, Card } from '../shared';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export default function JDUploader({ onSuccess }) {
+  const { t } = useLanguage();
   const [mode, setMode] = useState('text'); // 'text' | 'file'
   const [jdText, setJdText] = useState('');
   const [title, setTitle] = useState('');
@@ -13,11 +15,11 @@ export default function JDUploader({ onSuccess }) {
 
   const handleUpload = async () => {
     if (mode === 'text' && !jdText.trim()) {
-      setError('Vui lòng nhập nội dung JD');
+      setError(t('upload.jdTextRequired'));
       return;
     }
     if (mode === 'file' && !file) {
-      setError('Vui lòng chọn file JD');
+      setError(t('upload.jdFileRequired'));
       return;
     }
     setUploading(true);
@@ -26,7 +28,7 @@ export default function JDUploader({ onSuccess }) {
       const { data } = await jdAPI.upload(mode === 'text' ? jdText : null, title, mode === 'file' ? file : null);
       onSuccess?.(data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Upload thất bại');
+      setError(err.response?.data?.error || t('upload.failed'));
     } finally {
       setUploading(false);
     }
@@ -34,7 +36,7 @@ export default function JDUploader({ onSuccess }) {
 
   return (
     <Card className="space-y-4">
-      <h3 className="text-lg font-bold text-gray-800">💼 Upload JD</h3>
+      <h3 className="text-lg font-bold text-gray-800">{t('upload.jdTitle')}</h3>
 
       {/* Mode toggle */}
       <div className="flex gap-2">
@@ -42,19 +44,19 @@ export default function JDUploader({ onSuccess }) {
           onClick={() => setMode('text')}
           className={`px-4 py-2 rounded-xl font-medium transition-all ${mode === 'text' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'}`}
         >
-          📝 Nhập text
+          {t('upload.enterText')}
         </button>
         <button
           onClick={() => setMode('file')}
           className={`px-4 py-2 rounded-xl font-medium transition-all ${mode === 'file' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'}`}
         >
-          📎 Upload file
+          {t('upload.uploadFile')}
         </button>
       </div>
 
       {mode === 'text' ? (
         <textarea
-          placeholder="Dán nội dung Job Description vào đây..."
+          placeholder={t('upload.jdTextPlaceholder')}
           value={jdText}
           onChange={(e) => setJdText(e.target.value)}
           rows={8}
@@ -70,14 +72,14 @@ export default function JDUploader({ onSuccess }) {
           {file ? (
             <p className="font-semibold text-primary">{file.name}</p>
           ) : (
-            <p className="text-gray-500">Click để chọn file PDF hoặc TXT</p>
+            <p className="text-gray-500">{t('upload.choosePdfTxt')}</p>
           )}
         </div>
       )}
 
       <input
         type="text"
-        placeholder="Tiêu đề JD (tùy chọn)"
+        placeholder={t('upload.jdPlaceholder')}
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -86,7 +88,7 @@ export default function JDUploader({ onSuccess }) {
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
       <Button onClick={handleUpload} loading={uploading} className="w-full">
-        {uploading ? 'Đang tải lên...' : 'Tải JD lên'}
+        {uploading ? t('upload.uploading') : t('upload.uploadJd')}
       </Button>
     </Card>
   );

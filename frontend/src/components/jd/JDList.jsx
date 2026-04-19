@@ -1,6 +1,8 @@
 import { Card, Button } from '../shared';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 function JDCard({ jd, onDelete, onSelect }) {
+  const { t, language } = useLanguage();
   return (
     <Card className="flex items-center justify-between gap-4" hoverable onClick={() => onSelect?.(jd)}>
       <div className="flex items-center gap-4">
@@ -10,25 +12,26 @@ function JDCard({ jd, onDelete, onSelect }) {
           <p className="text-sm text-gray-500">{jd.original_filename}</p>
           {jd.created_at && (
             <p className="text-xs text-gray-400 mt-1">
-              {new Date(jd.created_at).toLocaleDateString('vi-VN')}
+              {new Date(jd.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
             </p>
           )}
         </div>
       </div>
       <Button variant="danger" size="sm" onClick={(e) => { e.stopPropagation(); onDelete?.(jd.id); }}>
-        🗑️ Xóa
+        {t('list.delete')}
       </Button>
     </Card>
   );
 }
 
 export default function JDList({ jds, onDelete, onSelect, loading }) {
-  if (loading) return <div className="text-center py-8 text-gray-500">Đang tải...</div>;
+  const { t } = useLanguage();
+  if (loading) return <div className="text-center py-8 text-gray-500">{t('common.loading')}</div>;
   if (!jds || jds.length === 0) {
     return (
       <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
         <div className="text-4xl mb-2">📂</div>
-        <p className="text-gray-500">Chưa có JD nào</p>
+        <p className="text-gray-500">{t('list.noJd')}</p>
       </div>
     );
   }

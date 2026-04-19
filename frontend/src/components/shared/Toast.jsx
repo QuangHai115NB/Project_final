@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-export function Toast({ message, type = 'info', onClose, duration = 4000 }) {
+export function Toast({ message, type = 'info', onClose, duration = 5000 }) {
   useEffect(() => {
     if (duration > 0) {
       const timer = setTimeout(onClose, duration);
@@ -23,7 +23,7 @@ export function Toast({ message, type = 'info', onClose, duration = 4000 }) {
   };
 
   return (
-    <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg ${colors[type]} animate-slide-in`}>
+    <div className={`fixed top-4 right-4 z-50 flex max-w-md items-center gap-3 rounded-lg px-5 py-3 shadow-lg ${colors[type]} animate-slide-in`}>
       <span className="font-bold text-lg">{icons[type]}</span>
       <span className="font-medium">{message}</span>
       <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100 text-xl leading-none">×</button>
@@ -34,9 +34,10 @@ export function Toast({ message, type = 'info', onClose, duration = 4000 }) {
 export function useToast() {
   const [toast, setToast] = useState(null);
 
-  const showToast = (message, type = 'info', duration = 4000) => {
+  const showToast = (message, type = 'info', duration = 5000) => {
     setToast({ message, type, duration });
   };
+  const hideToast = useCallback(() => setToast(null), []);
 
-  return { toast, showToast };
+  return { toast, showToast, hideToast };
 }

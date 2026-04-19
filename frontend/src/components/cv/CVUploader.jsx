@@ -1,8 +1,10 @@
 import { useState, useRef } from 'react';
 import { cvAPI } from '../../api/auth';
 import { Button, Card } from '../shared';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export default function CVUploader({ onSuccess }) {
+  const { t } = useLanguage();
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
   const [dragOver, setDragOver] = useState(false);
@@ -19,7 +21,7 @@ export default function CVUploader({ onSuccess }) {
       setFile(dropped);
       setError('');
     } else {
-      setError('Vui lòng chọn file PDF');
+      setError(t('upload.pdfOnly'));
     }
   };
 
@@ -29,13 +31,13 @@ export default function CVUploader({ onSuccess }) {
       setFile(f);
       setError('');
     } else {
-      setError('Vui lòng chọn file PDF');
+      setError(t('upload.pdfOnly'));
     }
   };
 
   const handleUpload = async () => {
     if (!file) {
-      setError('Vui lòng chọn file PDF');
+      setError(t('upload.pdfOnly'));
       return;
     }
     setUploading(true);
@@ -46,7 +48,7 @@ export default function CVUploader({ onSuccess }) {
       setProgress(100);
       onSuccess?.(data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Upload thất bại');
+      setError(err.response?.data?.error || t('upload.failed'));
     } finally {
       setUploading(false);
     }
@@ -54,7 +56,7 @@ export default function CVUploader({ onSuccess }) {
 
   return (
     <Card className="space-y-4">
-      <h3 className="text-lg font-bold text-gray-800">📄 Upload CV</h3>
+      <h3 className="text-lg font-bold text-gray-800">{t('upload.cvTitle')}</h3>
 
       {/* Drop zone */}
       <div
@@ -76,8 +78,8 @@ export default function CVUploader({ onSuccess }) {
           </div>
         ) : (
           <div>
-            <p className="font-medium text-gray-700">Kéo thả file PDF vào đây</p>
-            <p className="text-sm text-gray-500">hoặc click để chọn file</p>
+            <p className="font-medium text-gray-700">{t('upload.dragPdf')}</p>
+            <p className="text-sm text-gray-500">{t('upload.clickChoose')}</p>
           </div>
         )}
       </div>
@@ -85,7 +87,7 @@ export default function CVUploader({ onSuccess }) {
       {/* Title input */}
       <input
         type="text"
-        placeholder="Tiêu đề CV (tùy chọn)"
+        placeholder={t('upload.cvPlaceholder')}
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -101,7 +103,7 @@ export default function CVUploader({ onSuccess }) {
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
       <Button onClick={handleUpload} loading={uploading} disabled={!file} className="w-full">
-        {uploading ? 'Đang tải lên...' : 'Tải CV lên'}
+        {uploading ? t('upload.uploading') : t('upload.uploadCv')}
       </Button>
     </Card>
   );

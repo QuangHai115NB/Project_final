@@ -6,8 +6,10 @@ import { JDUploader, JDList } from '../components/jd';
 import { MatchMaker, MatchReport } from '../components/match';
 import { Button, Card, Modal, LoadingSpinner } from '../components/shared';
 import { useToast, Toast } from '../components/shared/Toast';
+import { LanguageToggle, useLanguage } from '../i18n/LanguageContext';
 
 function CvDetailModal({ cv, onClose }) {
+  const { language, t } = useLanguage();
   const [url, setUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20,7 +22,7 @@ function CvDetailModal({ cv, onClose }) {
     setUrl(null);
     cvAPI.getSignedUrl(cv.id)
       .then(({ data }) => setUrl(data.url))
-      .catch(() => setError('Không thể lấy file CV'))
+      .catch(() => setError(t('dashboard.fileErrorCv')))
       .finally(() => setLoading(false));
   }, [cv?.id]);
 
@@ -33,14 +35,14 @@ function CvDetailModal({ cv, onClose }) {
         <div className="flex items-center gap-3 text-sm text-gray-500">
           <span>📎 {cv.original_filename}</span>
           {cv.created_at && (
-            <span>{new Date(cv.created_at).toLocaleDateString('vi-VN')}</span>
+            <span>{new Date(cv.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}</span>
           )}
         </div>
 
         {/* PDF viewer */}
         {loading && (
           <div className="flex justify-center py-12">
-            <LoadingSpinner text="Đang tải file..." />
+            <LoadingSpinner text={t('common.fileLoading')} />
           </div>
         )}
 
@@ -68,7 +70,7 @@ function CvDetailModal({ cv, onClose }) {
               size="sm"
               onClick={() => window.open(url, '_blank')}
             >
-              🔗 Mở trong tab mới
+              {t('common.openNewTab')}
             </Button>
           </div>
         )}
@@ -78,6 +80,7 @@ function CvDetailModal({ cv, onClose }) {
 }
 
 function JdDetailModal({ jd, onClose }) {
+  const { language, t } = useLanguage();
   const [url, setUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -97,7 +100,7 @@ function JdDetailModal({ jd, onClose }) {
 
     jdAPI.getSignedUrl(jd.id)
       .then(({ data }) => setUrl(data.url))
-      .catch(() => setError('Không thể lấy file JD'))
+      .catch(() => setError(t('dashboard.fileErrorJd')))
       .finally(() => setLoading(false));
   }, [jd?.id]);
 
@@ -105,14 +108,14 @@ function JdDetailModal({ jd, onClose }) {
 
   // JD dạng text thuần → hiển thị text inline
   if (jd.original_filename === 'manual_jd.txt') {
-    const text = jd.content_text || 'Không có nội dung.';
+    const text = jd.content_text || t('dashboard.noContent');
     return (
       <Modal isOpen={true} onClose={onClose} title={`💼 ${jd.title}`} size="lg">
         <div className="space-y-4">
           <div className="flex items-center gap-3 text-sm text-gray-500">
-            <span>📝 Nhập text thủ công</span>
+            <span>{t('dashboard.manualJd')}</span>
             {jd.created_at && (
-              <span>{new Date(jd.created_at).toLocaleDateString('vi-VN')}</span>
+              <span>{new Date(jd.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}</span>
             )}
           </div>
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 max-h-[60vh] overflow-y-auto">
@@ -130,13 +133,13 @@ function JdDetailModal({ jd, onClose }) {
         <div className="flex items-center gap-3 text-sm text-gray-500">
           <span>📎 {jd.original_filename}</span>
           {jd.created_at && (
-            <span>{new Date(jd.created_at).toLocaleDateString('vi-VN')}</span>
+            <span>{new Date(jd.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}</span>
           )}
         </div>
 
         {loading && (
           <div className="flex justify-center py-12">
-            <LoadingSpinner text="Đang tải file..." />
+            <LoadingSpinner text={t('common.fileLoading')} />
           </div>
         )}
 
@@ -176,7 +179,7 @@ function JdDetailModal({ jd, onClose }) {
               size="sm"
               onClick={() => window.open(url, '_blank')}
             >
-              🔗 Mở trong tab mới
+              {t('common.openNewTab')}
             </Button>
           </div>
         )}
@@ -187,7 +190,8 @@ function JdDetailModal({ jd, onClose }) {
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
-  const { toast, showToast } = useToast();
+  const { language, t } = useLanguage();
+  const { toast, showToast, hideToast } = useToast();
 
   const [cvs, setCvs] = useState([]);
   const [jds, setJds] = useState([]);
@@ -237,24 +241,24 @@ export default function Dashboard() {
   };
 
   const handleDeleteCv = async (cvId) => {
-    if (!confirm('Xóa CV này?')) return;
+    if (!confirm(t('dashboard.deleteCvConfirm'))) return;
     try {
       await cvAPI.delete(cvId);
       setCvs((prev) => prev.filter((c) => c.id !== cvId));
-      showToast('Đã xóa CV', 'success');
+      showToast(t('dashboard.cvDeleted'), 'success');
     } catch (err) {
-      showToast(err.response?.data?.error || 'Xóa thất bại', 'error');
+      showToast(err.response?.data?.error || t('dashboard.deleteFailed'), 'error');
     }
   };
 
   const handleDeleteJd = async (jdId) => {
-    if (!confirm('Xóa JD này?')) return;
+    if (!confirm(t('dashboard.deleteJdConfirm'))) return;
     try {
       await jdAPI.delete(jdId);
       setJds((prev) => prev.filter((j) => j.id !== jdId));
-      showToast('Đã xóa JD', 'success');
+      showToast(t('dashboard.jdDeleted'), 'success');
     } catch (err) {
-      showToast(err.response?.data?.error || 'Xóa thất bại', 'error');
+      showToast(err.response?.data?.error || t('dashboard.deleteFailed'), 'error');
     }
   };
 
@@ -266,7 +270,7 @@ export default function Dashboard() {
     setCurrentMatchId(data.match_id);
     setShowReportModal(true);
     fetchMatches();
-    showToast('So khớp thành công!', 'success');
+    showToast(t('dashboard.matchSuccess'), 'success');
   };
 
   const scoreClass = (score) =>
@@ -274,15 +278,16 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      {toast && <Toast {...toast} onClose={hideToast} />}
 
       {/* Top Navbar */}
       <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-xl font-bold text-primary">📋 CV Reviewer</h1>
+          <h1 className="text-xl font-bold text-primary">{t('app.name')}</h1>
           <div className="flex items-center gap-4">
+            <LanguageToggle />
             <span className="text-sm text-gray-600">{user?.email}</span>
-            <Button variant="secondary" size="sm" onClick={logout}>Đăng xuất</Button>
+            <Button variant="secondary" size="sm" onClick={logout}>{t('dashboard.logout')}</Button>
           </div>
         </div>
       </nav>
@@ -290,16 +295,16 @@ export default function Dashboard() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
-          <Button onClick={() => setShowMatchModal(true)}>🔗 So khớp</Button>
+          <h2 className="text-2xl font-bold text-gray-800">{t('dashboard.title')}</h2>
+          <Button onClick={() => setShowMatchModal(true)}>{t('dashboard.match')}</Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* CV Column */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-800">📄 CV ({cvs.length})</h3>
-              <Button size="sm" variant="secondary" onClick={() => setShowUploadCv(true)}>+ Thêm CV</Button>
+              <h3 className="font-bold text-gray-800">CV ({cvs.length})</h3>
+              <Button size="sm" variant="secondary" onClick={() => setShowUploadCv(true)}>{t('dashboard.addCv')}</Button>
             </div>
             <CVList
               cvs={cvs}
@@ -312,8 +317,8 @@ export default function Dashboard() {
           {/* JD Column */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-800">💼 JD ({jds.length})</h3>
-              <Button size="sm" variant="secondary" onClick={() => setShowUploadJd(true)}>+ Thêm JD</Button>
+              <h3 className="font-bold text-gray-800">JD ({jds.length})</h3>
+              <Button size="sm" variant="secondary" onClick={() => setShowUploadJd(true)}>{t('dashboard.addJd')}</Button>
             </div>
             <JDList
               jds={jds}
@@ -325,13 +330,13 @@ export default function Dashboard() {
 
           {/* Match History Column */}
           <div className="space-y-4">
-            <h3 className="font-bold text-gray-800">📜 Lịch sử so khớp ({matches.length})</h3>
+            <h3 className="font-bold text-gray-800">{t('dashboard.matchHistory', { count: matches.length })}</h3>
             {loadingMatches ? (
               <div className="flex justify-center py-8"><LoadingSpinner size="sm" /></div>
             ) : matches.length === 0 ? (
               <Card className="text-center py-8 text-gray-400">
-                <div className="text-4xl mb-2">📝</div>
-                <p className="text-sm">Chưa có lịch sử so khớp</p>
+                <div className="mb-2 text-4xl">□</div>
+                <p className="text-sm">{t('dashboard.noMatchHistory')}</p>
               </Card>
             ) : (
               <div className="space-y-3">
@@ -347,7 +352,7 @@ export default function Dashboard() {
                         <p className="text-xs text-gray-500">vs {m.jd_title}</p>
                         {m.created_at && (
                           <p className="text-xs text-gray-400 mt-1">
-                            {new Date(m.created_at).toLocaleDateString('vi-VN')}
+                            {new Date(m.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
                           </p>
                         )}
                       </div>
@@ -364,19 +369,19 @@ export default function Dashboard() {
       </div>
 
       {/* Modals */}
-      <Modal isOpen={showUploadCv} onClose={() => setShowUploadCv(false)} title="📄 Thêm CV mới" size="md">
-        <CVUploader onSuccess={() => { setShowUploadCv(false); fetchCvs(); showToast('Đã tải CV lên!', 'success'); }} />
+      <Modal isOpen={showUploadCv} onClose={() => setShowUploadCv(false)} title={t('dashboard.addNewCv')} size="md">
+        <CVUploader onSuccess={() => { setShowUploadCv(false); fetchCvs(); showToast(t('dashboard.cvUploaded'), 'success'); }} />
       </Modal>
 
-      <Modal isOpen={showUploadJd} onClose={() => setShowUploadJd(false)} title="💼 Thêm JD mới" size="lg">
-        <JDUploader onSuccess={() => { setShowUploadJd(false); fetchJds(); showToast('Đã tải JD lên!', 'success'); }} />
+      <Modal isOpen={showUploadJd} onClose={() => setShowUploadJd(false)} title={t('dashboard.addNewJd')} size="lg">
+        <JDUploader onSuccess={() => { setShowUploadJd(false); fetchJds(); showToast(t('dashboard.jdUploaded'), 'success'); }} />
       </Modal>
 
-      <Modal isOpen={showMatchModal} onClose={() => setShowMatchModal(false)} title="🔗 So khớp CV-JD" size="lg">
+      <Modal isOpen={showMatchModal} onClose={() => setShowMatchModal(false)} title={t('dashboard.matchCvJd')} size="lg">
         <MatchMaker cvs={cvs} jds={jds} onSuccess={handleMatchSuccess} />
       </Modal>
 
-      <Modal isOpen={showReportModal} onClose={() => { setShowReportModal(false); setCurrentMatchId(null); }} title="📊 Báo cáo so khớp" size="xl">
+      <Modal isOpen={showReportModal} onClose={() => { setShowReportModal(false); setCurrentMatchId(null); }} title={t('dashboard.matchReport')} size="xl">
         {currentMatchId ? <MatchReport key={currentMatchId} matchId={currentMatchId} /> : null}
       </Modal>
 

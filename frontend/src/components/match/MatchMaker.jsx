@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { matchAPI } from '../../api/auth';
-import { Button, Card, Modal } from '../shared';
+import { Button, Card } from '../shared';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export default function MatchMaker({ cvs, jds, onSuccess }) {
+  const { t } = useLanguage();
   const [selectedCv, setSelectedCv] = useState(null);
   const [selectedJd, setSelectedJd] = useState(null);
   const [matching, setMatching] = useState(false);
@@ -11,7 +13,7 @@ export default function MatchMaker({ cvs, jds, onSuccess }) {
 
   const handleMatch = async () => {
     if (!selectedCv || !selectedJd) {
-      setError('Vui lòng chọn cả CV và JD');
+      setError(t('match.requireBoth'));
       return;
     }
     setMatching(true);
@@ -21,7 +23,7 @@ export default function MatchMaker({ cvs, jds, onSuccess }) {
       const { data } = await matchAPI.create(selectedCv.id, selectedJd.id);
       onSuccess?.(data);
     } catch (err) {
-      setError(err.response?.data?.error || 'So khớp thất bại');
+      setError(err.response?.data?.error || t('match.failed'));
     } finally {
       setLoading(false);
     }
@@ -29,13 +31,13 @@ export default function MatchMaker({ cvs, jds, onSuccess }) {
 
   return (
     <Card className="space-y-4">
-      <h3 className="text-lg font-bold text-gray-800">🔗 So khớp CV-JD</h3>
-      <p className="text-sm text-gray-500">Chọn CV và JD để tạo báo cáo so khớp</p>
+      <h3 className="text-lg font-bold text-gray-800">{t('match.selectTitle')}</h3>
+      <p className="text-sm text-gray-500">{t('match.selectDesc')}</p>
 
       <div className="grid grid-cols-2 gap-4">
         {/* CV selection */}
         <div className="space-y-2">
-          <label className="text-sm font-semibold text-gray-700">📄 Chọn CV</label>
+          <label className="text-sm font-semibold text-gray-700">{t('match.selectCv')}</label>
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {cvs?.length > 0 ? cvs.map((cv) => (
               <button
@@ -46,13 +48,13 @@ export default function MatchMaker({ cvs, jds, onSuccess }) {
               >
                 {cv.title}
               </button>
-            )) : <p className="text-gray-400 text-sm">Chưa có CV</p>}
+            )) : <p className="text-gray-400 text-sm">{t('match.noCv')}</p>}
           </div>
         </div>
 
         {/* JD selection */}
         <div className="space-y-2">
-          <label className="text-sm font-semibold text-gray-700">💼 Chọn JD</label>
+          <label className="text-sm font-semibold text-gray-700">{t('match.selectJd')}</label>
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {jds?.length > 0 ? jds.map((jd) => (
               <button
@@ -63,7 +65,7 @@ export default function MatchMaker({ cvs, jds, onSuccess }) {
               >
                 {jd.title}
               </button>
-            )) : <p className="text-gray-400 text-sm">Chưa có JD</p>}
+            )) : <p className="text-gray-400 text-sm">{t('match.noJd')}</p>}
           </div>
         </div>
       </div>
@@ -71,7 +73,7 @@ export default function MatchMaker({ cvs, jds, onSuccess }) {
       {error && <p className="text-red-500 text-sm">{error}</p>}
 
       <Button onClick={handleMatch} loading={loading} disabled={!selectedCv || !selectedJd} className="w-full">
-        {loading ? 'Đang so khớp...' : '🚀 Bắt đầu so khớp'}
+        {loading ? t('match.running') : t('match.start')}
       </Button>
     </Card>
   );
