@@ -325,6 +325,31 @@ def test_structure_score_strong_cv():
 
 # ─── Run all tests ────────────────────────────────────────────────────
 
+def test_semantic_fallback_score_not_zero():
+    """Semantic fallback must provide a useful score when embeddings are unavailable."""
+    import src.services.semantic_matcher as semantic_matcher
+
+    original_model = semantic_matcher._model
+    original_failed = semantic_matcher._model_load_failed
+    semantic_matcher._model = None
+    semantic_matcher._model_load_failed = True
+
+    try:
+        result = semantic_matcher.match_bullets_to_jd(
+            cv_experience_text=SAMPLE_CV_STRONG,
+            jd_text=SAMPLE_JD,
+        )
+    finally:
+        semantic_matcher._model = original_model
+        semantic_matcher._model_load_failed = original_failed
+
+    print(f"Semantic fallback score: {result['semantic_score']:.2f}")
+    print(f"Semantic fallback status: {result['status']}")
+
+    assert result["semantic_score"] > 0, "Semantic fallback should not return 0"
+    assert result["fallback"] == "tfidf_skill_overlap"
+
+
 if __name__ == "__main__":
     tests = [
         ("Skill Extraction", test_skill_extraction),
@@ -336,6 +361,7 @@ if __name__ == "__main__":
         ("Section Parser", test_section_parser_with_sample_cv),
         ("Keyword Score", test_keyword_score),
         ("Structure Score", test_structure_score_strong_cv),
+        ("Semantic Fallback Score", test_semantic_fallback_score_not_zero),
     ]
 
     passed = 0

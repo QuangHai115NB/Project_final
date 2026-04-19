@@ -21,22 +21,30 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Tuple
 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
+
 from src.data.rules_config import KEYWORD_EXCLUDED_PATTERNS
 from src.data.skills_taxonomy import extract_skills
+from src.services.text_preprocess import normalize_for_matching
 
 # Lazy import để tránh crash nếu chưa cài
 _model = None
+_model_load_failed = False
 _model_name = "all-MiniLM-L6-v2"
 
 
 def _get_model():
     """Lazy load model — chỉ load 1 lần, giữ trong memory."""
-    global _model
+    global _model, _model_load_failed
+    if _model_load_failed:
+        return None
     if _model is None:
         try:
             from sentence_transformers import SentenceTransformer
             _model = SentenceTransformer(_model_name)
-        except ImportError:
+        except Exception:
+            _model_load_failed = True
             return None
     return _model
 
@@ -95,6 +103,122 @@ def _is_non_matching_jd_line(line: str) -> bool:
     return any(re.search(pattern, lowered, re.IGNORECASE) for pattern in KEYWORD_EXCLUDED_PATTERNS)
 
 
+def _fallback_semantic_result(
+    cv_experience_text: str,
+    jd_text: str,
+    status: str,
+    top_k: int = 5,
+) -> Dict:
+    """
+    Lightweight fallback when sentence-transformers is unavailable.
+
+    It is not true embedding semantics, but it is materially better than 0:
+    TF-IDF line coverage + overall similarity + JD skill overlap.
+    """
+    cv_bullets = _extract_bullets(cv_experience_text)
+    jd_lines = _extract_jd_responsibilities(jd_text)
+    cv_norm = normalize_for_matching(cv_experience_text)
+    jd_norm = normalize_for_matching(jd_text)
+
+    if not cv_norm or not jd_norm:
+        return {
+            "avg_score": 0.0,
+            "semantic_score": 0.0,
+            "top_matches": [],
+            "weak_matches": [],
+            "unmatched_jd_lines": jd_lines[:10],
+            "status": f"{status}_empty_input",
+            "fallback": "tfidf_skill_overlap",
+        }
+
+    overall_score = 0.0
+    line_coverage_score = 0.0
+    avg_best_score = 0.0
+    top_matches = []
+    weak_matches = []
+    unmatched_jd = []
+
+    try:
+        overall_matrix = TfidfVectorizer(stop_words="english", ngram_range=(1, 2)).fit_transform([cv_norm, jd_norm])
+        overall_score = float(sk_cosine(overall_matrix[0:1], overall_matrix[1:2])[0][0]) * 100.0
+    except Exception:
+        overall_score = 0.0
+
+    if cv_bullets and jd_lines:
+        try:
+            cv_subset = cv_bullets[:30]
+            jd_subset = jd_lines[:20]
+            matrix = TfidfVectorizer(stop_words="english", ngram_range=(1, 2)).fit_transform(cv_subset + jd_subset)
+            cv_matrix = matrix[:len(cv_subset)]
+            jd_matrix = matrix[len(cv_subset):]
+            sim_matrix = sk_cosine(cv_matrix, jd_matrix)
+
+            for i, bullet in enumerate(cv_subset):
+                best_jd_idx = int(sim_matrix[i].argmax())
+                best_score = float(sim_matrix[i][best_jd_idx]) * 100.0
+                entry = {
+                    "cv_bullet": bullet[:200],
+                    "best_jd_match": jd_subset[best_jd_idx][:200],
+                    "score": round(best_score, 2),
+                }
+                if best_score >= 18:
+                    top_matches.append(entry)
+                else:
+                    weak_matches.append(entry)
+
+            jd_best_scores = []
+            for j, jd_line in enumerate(jd_subset):
+                max_cv_score = float(sim_matrix[:, j].max()) * 100.0
+                jd_best_scores.append(max_cv_score)
+                if max_cv_score < 18:
+                    unmatched_jd.append({
+                        "jd_line": jd_line[:200],
+                        "best_cv_score": round(max_cv_score, 2),
+                    })
+
+            line_coverage_score = (
+                sum(1 for score in jd_best_scores if score >= 18)
+                / max(len(jd_best_scores), 1)
+            ) * 100.0
+            avg_best_score = sum(jd_best_scores) / max(len(jd_best_scores), 1)
+        except Exception:
+            line_coverage_score = 0.0
+            avg_best_score = 0.0
+
+    cv_skills = set(extract_skills(cv_experience_text).get("skills", []))
+    jd_skills = set(extract_skills(jd_text).get("skills", []))
+    skill_overlap_score = (
+        len(cv_skills & jd_skills) / max(len(jd_skills), 1) * 100.0
+        if jd_skills else 0.0
+    )
+
+    semantic_score = round(
+        max(
+            overall_score,
+            (line_coverage_score * 0.45) + (avg_best_score * 0.25) + (skill_overlap_score * 0.30),
+        ),
+        2,
+    )
+
+    top_matches.sort(key=lambda x: x["score"], reverse=True)
+    weak_matches.sort(key=lambda x: x["score"])
+
+    return {
+        "avg_score": round(avg_best_score or overall_score, 2),
+        "semantic_score": min(semantic_score, 100.0),
+        "top_matches": top_matches[:top_k],
+        "weak_matches": weak_matches[:top_k],
+        "unmatched_jd_lines": unmatched_jd[:5],
+        "status": status,
+        "fallback": "tfidf_skill_overlap",
+        "overall_tfidf_score": round(overall_score, 2),
+        "line_coverage_score": round(line_coverage_score, 2),
+        "skill_overlap_score": round(skill_overlap_score, 2),
+        "cv_bullets_analyzed": len(cv_bullets[:30]),
+        "jd_lines_analyzed": len(jd_lines[:20]),
+    }
+
+
 def compute_semantic_similarity(text_a: str, text_b: str) -> float:
     """
     Tính semantic similarity giữa 2 đoạn text (0.0 - 100.0).
@@ -148,32 +272,26 @@ def match_bullets_to_jd(
 
     # Fallback nếu không có model
     if model is None:
-        return {
-            "avg_score": 0.0,
-            "semantic_score": 0.0,
-            "top_matches": [],
-            "weak_matches": [],
-            "unmatched_jd_lines": [],
-            "status": "model_unavailable",
-        }
+        return _fallback_semantic_result(
+            cv_experience_text=cv_experience_text,
+            jd_text=jd_text,
+            status="fallback_model_unavailable",
+            top_k=top_k,
+        )
 
     cv_bullets = _extract_bullets(cv_experience_text)
     jd_lines = _extract_jd_responsibilities(jd_text)
 
     if not cv_bullets or not jd_lines:
-        return {
-            "avg_score": 0.0,
-            "semantic_score": 0.0,
-            "top_matches": [],
-            "weak_matches": [],
-            "unmatched_jd_lines": jd_lines[:10],
-            "status": "empty_input",
-        }
+        return _fallback_semantic_result(
+            cv_experience_text=cv_experience_text,
+            jd_text=jd_text,
+            status="fallback_empty_input",
+            top_k=top_k,
+        )
 
     try:
         import numpy as np
-        from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
-
         # Encode tất cả cùng lúc — hiệu quả hơn encode từng cái
         cv_embeddings = model.encode(cv_bullets[:30], convert_to_numpy=True)
         jd_embeddings = model.encode(jd_lines[:20], convert_to_numpy=True)
@@ -224,6 +342,14 @@ def match_bullets_to_jd(
             2
         )
 
+        if semantic_score <= 0:
+            return _fallback_semantic_result(
+                cv_experience_text=cv_experience_text,
+                jd_text=jd_text,
+                status="fallback_low_embedding_score",
+                top_k=top_k,
+            )
+
         # Sort: top matches theo score desc
         top_matches.sort(key=lambda x: x["score"], reverse=True)
         weak_matches.sort(key=lambda x: x["score"])
@@ -244,14 +370,12 @@ def match_bullets_to_jd(
         }
 
     except Exception as e:
-        return {
-            "avg_score": 0.0,
-            "semantic_score": 0.0,
-            "top_matches": [],
-            "weak_matches": [],
-            "unmatched_jd_lines": [],
-            "status": f"error: {str(e)}",
-        }
+        return _fallback_semantic_result(
+            cv_experience_text=cv_experience_text,
+            jd_text=jd_text,
+            status=f"fallback_error: {str(e)}",
+            top_k=top_k,
+        )
 
 
 def find_skill_context_in_cv(
