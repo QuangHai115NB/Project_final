@@ -1,0 +1,8 @@
+Run migrations locally:
+
+1. Install dependencies:
+   pip install -r requirements.txt
+2. Create a revision:
+   alembic revision -m "describe change"
+3. Upgrade database:
+   alembic upgrade head

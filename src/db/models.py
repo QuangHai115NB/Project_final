@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean
+
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
+
 from src.db.database import Base
 
 
@@ -9,32 +13,33 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
-
     password_hash = Column(String(255), nullable=False)
     is_verified = Column(Boolean, nullable=False, default=False)
-
+    full_name = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    headline = Column(String(255), nullable=True)
+    bio = Column(Text, nullable=True)
+    avatar_path = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Quan hệ với CV và JD của người dùng
     cvs = relationship("CVDocument", back_populates="user", cascade="all, delete-orphan")
     jds = relationship("JDDocument", back_populates="user", cascade="all, delete-orphan")
     matches = relationship("MatchHistory", back_populates="user", cascade="all, delete-orphan")
-
-    # Token
     tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
 
+
 class RefreshToken(Base):
-    """Luu refresh token de ho tro logout va revoke"""
     __tablename__ = "refresh_tokens"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    token_hash = Column(String(255),unique=True ,nullable=False, index=True)
-    is_revoked = Column(Boolean, default=False, nullable= False)
+    token_hash = Column(String(255), unique=True, nullable=False, index=True)
+    is_revoked = Column(Boolean, default=False, nullable=False)
     expires_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="tokens")
+
 
 class CVDocument(Base):
     __tablename__ = "cv_documents"
@@ -48,7 +53,6 @@ class CVDocument(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Quan hệ với bảng `User` và `MatchHistory`
     user = relationship("User", back_populates="cvs")
     matches = relationship("MatchHistory", back_populates="cv")
 
@@ -65,7 +69,6 @@ class JDDocument(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Quan hệ với bảng `User` và `MatchHistory`
     user = relationship("User", back_populates="jds")
     matches = relationship("MatchHistory", back_populates="jd")
 
@@ -81,7 +84,6 @@ class MatchHistory(Base):
     report_json = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Quan hệ với bảng `User`, `CVDocument`, `JDDocument`
     user = relationship("User", back_populates="matches")
     cv = relationship("CVDocument", back_populates="matches")
     jd = relationship("JDDocument", back_populates="matches")

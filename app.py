@@ -1,6 +1,8 @@
 import os
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, jsonify
+
+from src.core.errors import AppError
 
 load_dotenv()
 
@@ -20,6 +22,15 @@ def create_app():
 
     app.register_blueprint(auth_bp)  # /api/auth/*
     app.register_blueprint(doc_bp)
+
+    @app.errorhandler(AppError)
+    def handle_app_error(error: AppError):
+        return jsonify(error.to_dict()), error.status_code
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(error: Exception):
+        app.logger.exception("Unhandled application error", exc_info=error)
+        return jsonify({"error": str(error)}), 500
 
     @app.get("/")
     def home():
