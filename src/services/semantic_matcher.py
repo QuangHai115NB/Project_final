@@ -18,6 +18,7 @@ Model dùng: all-MiniLM-L6-v2 (nhỏ, nhanh, đủ mạnh cho IT CV)
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Dict, List, Optional, Tuple
 
@@ -32,6 +33,7 @@ from src.services.text_preprocess import normalize_for_matching
 _model = None
 _model_load_failed = False
 _model_name = "all-MiniLM-L6-v2"
+_allow_model_download = os.getenv("SEMANTIC_MODEL_ALLOW_DOWNLOAD", "false").lower() in ("true", "1", "yes")
 
 
 def _get_model():
@@ -42,7 +44,10 @@ def _get_model():
     if _model is None:
         try:
             from sentence_transformers import SentenceTransformer
-            _model = SentenceTransformer(_model_name)
+            _model = SentenceTransformer(
+                _model_name,
+                local_files_only=not _allow_model_download,
+            )
         except Exception:
             _model_load_failed = True
             return None

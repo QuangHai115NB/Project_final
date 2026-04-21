@@ -10,6 +10,8 @@ Không cần pytest — chạy thẳng để kiểm tra nhanh.
 import sys, os
 
 sys.path.insert(0, os.path.abspath("."))
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ─── Mock data ─────────────────────────────────────────────────────
 
@@ -105,11 +107,11 @@ def run_test(name: str, fn):
     print('=' * 60)
     try:
         fn()
-        print("✅ PASSED")
+        print("PASSED")
     except AssertionError as e:
-        print(f"❌ FAILED: {e}")
+        print(f"FAILED: {e}")
     except Exception as e:
-        print(f"⚠️  ERROR: {type(e).__name__}: {e}")
+        print(f"ERROR: {type(e).__name__}: {e}")
 
 
 def test_skill_extraction():

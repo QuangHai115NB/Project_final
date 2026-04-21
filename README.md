@@ -16,6 +16,7 @@ CV Reviewer is a graduation-project style web application for comparing a candid
 ## Tech Stack
 
 - Backend: Flask, SQLAlchemy, PyJWT, bcrypt, Redis, pdfplumber, scikit-learn, sentence-transformers, python-docx.
+- Backend: Flask, SQLAlchemy, Alembic, PyJWT, bcrypt, Redis, pdfplumber, scikit-learn, sentence-transformers, python-docx.
 - Frontend: React, Vite, React Router, Axios, Tailwind CSS.
 - Storage: Supabase Storage.
 - Database: PostgreSQL in production, SQLite fallback for local development.
@@ -89,6 +90,14 @@ $env:PYTHONIOENCODING='utf-8'
 .\.venv\Scripts\python.exe test_matching_engine.py
 ```
 
+Backend regression tests:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+.\.venv\Scripts\python.exe test_backend_regressions.py
+.\.venv\Scripts\python.exe test_api_routes.py
+```
+
 Frontend production build:
 
 ```powershell
@@ -116,3 +125,12 @@ See:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [docs/API.md](docs/API.md)
 - [docs/GRADUATION_CHECKLIST.md](docs/GRADUATION_CHECKLIST.md)
+
+## Migrations
+
+Alembic skeleton is included for schema versioning:
+
+```powershell
+alembic revision -m "init schema"
+alembic upgrade head
+```
