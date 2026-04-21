@@ -100,6 +100,18 @@ export const authAPI = {
 
   getMe: () => api.get('/auth/me'),
 
+  updateProfile: (payload) => api.put('/auth/profile', payload),
+
+  uploadAvatar: (file) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.post('/auth/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  deleteAvatar: () => api.delete('/auth/avatar'),
+
   changePassword: (oldPassword, newPassword) =>
     api.post('/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
 

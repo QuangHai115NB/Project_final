@@ -4,12 +4,44 @@ import { cvAPI, jdAPI, matchAPI } from '../api/auth';
 import { CVUploader, CVList } from '../components/cv';
 import { JDUploader, JDList } from '../components/jd';
 import { MatchMaker, MatchReport } from '../components/match';
+import ProfileSettings from '../components/profile/ProfileSettings';
 import { Button, Card, Modal, LoadingSpinner } from '../components/shared';
 import { useToast, Toast } from '../components/shared/Toast';
 import { LanguageToggle, useLanguage } from '../i18n/LanguageContext';
 import { ThemeToggle } from '../theme/ThemeContext';
 
 const MATCH_PAGE_SIZE = 8;
+
+function getUserInitials(user) {
+  const source = user?.full_name || user?.email || 'U';
+  const parts = source.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function UserAvatar({ user, size = 'md' }) {
+  const initials = getUserInitials(user);
+  const classes = size === 'sm' ? 'h-10 w-10 text-sm' : 'h-14 w-14 text-lg';
+
+  if (user?.avatar_url) {
+    return (
+      <img
+        src={user.avatar_url}
+        alt={user.full_name || user.email || 'User avatar'}
+        className={`${classes} rounded-full object-cover ring-2 ring-blue-100 dark:ring-blue-900/40`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${classes} flex items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 font-black text-white ring-2 ring-blue-100 dark:ring-blue-900/40`}
+    >
+      {initials}
+    </div>
+  );
+}
 
 function PageHeader({ title, description, action }) {
   return (
@@ -222,6 +254,7 @@ export default function Dashboard() {
     { id: 'jds', label: tx('nav.jds', 'Quản lý JD') },
     { id: 'match', label: tx('nav.match', 'So khớp CV-JD') },
     { id: 'reports', label: tx('nav.reports', 'Lịch sử báo cáo') },
+    { id: 'profile', label: tx('nav.profile', 'Tài khoản') },
   ]), [language]);
 
   useEffect(() => {
@@ -500,11 +533,22 @@ export default function Dashboard() {
     </>
   );
 
+  const renderProfile = () => (
+    <>
+      <PageHeader
+        title={tx('nav.profile', 'Tài khoản')}
+        description={tx('profile.pageDesc', 'Quản lý avatar, thông tin cá nhân và mật khẩu tài khoản.')}
+      />
+      <ProfileSettings t={t} tx={tx} showToast={showToast} />
+    </>
+  );
+
   const renderContent = () => {
     if (activePage === 'cvs') return renderCvs();
     if (activePage === 'jds') return renderJds();
     if (activePage === 'match') return renderMatch();
     if (activePage === 'reports') return renderReports();
+    if (activePage === 'profile') return renderProfile();
     return renderOverview();
   };
 
@@ -515,8 +559,16 @@ export default function Dashboard() {
       <div className="flex min-h-screen">
         <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-gray-200 bg-white dark:border-slate-800 dark:bg-slate-950 lg:flex lg:flex-col">
           <div className="border-b border-gray-200 p-5 dark:border-slate-800">
-            <h1 className="text-xl font-black text-primary dark:text-blue-300">{t('app.name')}</h1>
-            <p className="mt-1 truncate text-sm text-gray-500 dark:text-slate-400">{user?.email}</p>
+            <div className="flex items-center gap-3">
+              <UserAvatar user={user} />
+              <div className="min-w-0">
+                <h1 className="text-xl font-black text-primary dark:text-blue-300">{t('app.name')}</h1>
+                <p className="truncate text-sm font-semibold text-gray-800 dark:text-slate-100">
+                  {user?.full_name || tx('profile.noName', 'Người dùng')}
+                </p>
+                <p className="truncate text-xs text-gray-500 dark:text-slate-400">{user?.email}</p>
+              </div>
+            </div>
           </div>
           <nav className="flex-1 space-y-1 p-3">
             {navItems.map((item) => (
@@ -546,7 +598,13 @@ export default function Dashboard() {
         <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
           <header className="sticky top-0 z-30 border-b border-gray-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950 lg:hidden">
             <div className="flex items-center justify-between gap-3">
-              <h1 className="text-lg font-black text-primary dark:text-blue-300">{t('app.name')}</h1>
+              <div className="flex items-center gap-3">
+                <UserAvatar user={user} size="sm" />
+                <div>
+                  <h1 className="text-lg font-black text-primary dark:text-blue-300">{t('app.name')}</h1>
+                  <p className="max-w-[160px] truncate text-xs text-gray-500 dark:text-slate-400">{user?.email}</p>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <ThemeToggle />
                 <LanguageToggle />
