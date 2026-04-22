@@ -33,6 +33,28 @@ const SCORE_ROWS = [
   ['jd_structure_score', 'report.bulletQuality'],
 ];
 
+const VI_SECTION_LABELS = {
+  Summary: 'Tóm tắt',
+  Skills: 'Kỹ năng',
+  Experience: 'Kinh nghiệm',
+  Projects: 'Dự án',
+  Education: 'Học vấn',
+  Certifications: 'Chứng chỉ',
+  Contact: 'Liên hệ',
+};
+
+const VI_SCORE_AXES_LABELS = {
+  title: 'Cấu trúc đánh giá',
+  subtitle: 'Điểm cuối chỉ là chỉ số phụ',
+  overall_fit: 'Độ phù hợp tổng thể',
+  skill_coverage: 'Bao phủ kỹ năng',
+  evidence_strength: 'Sức mạnh bằng chứng',
+  cv_quality: 'Chất lượng CV',
+};
+
+const VI_PERSONAL_INFO_LABELS = ['Full Name', 'Email', 'Job', 'LinkedIn', 'GitHub'];
+const VI_PERSONAL_INFO_TITLE = 'Mẫu thông tin cá nhân';
+
 function getTone(score, color) {
   if (color && TONES[color]) return TONES[color];
   const val = Number(score) || 0;
@@ -53,6 +75,47 @@ function getLocalizedValue(item, language, viKey, enKey, fallbackKey) {
   return item[enKey] || item[fallbackKey] || item[viKey] || '';
 }
 
+function normalizeEnglishSectionLabel(value) {
+  return String(value || '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' / ');
+}
+
+function translateEvidenceToEnglish(item, issueCode) {
+  if (typeof item !== 'string') return item;
+
+  if (issueCode === 'weak_experience_alignment') {
+    const scoreMatch = item.match(/(\d+(?:[.,]\d+)?)\s*\/\s*100/);
+    if (/Mức khớp|Má»©c khá»›p/i.test(item) && scoreMatch) {
+      return `Experience-to-JD alignment: ${scoreMatch[1].replace(',', '.')}/100`;
+    }
+
+    const yearsMatch = item.match(/CV:\s*(\d+)\s*;\s*JD.*?:\s*(\d+)/i);
+    if (/Số năm trong CV|Sá»‘ nÄƒm trong CV/i.test(item) && yearsMatch) {
+      return `Years in CV: ${yearsMatch[1]}; JD requires: ${yearsMatch[2]}`;
+    }
+
+    if (/Tiêu chí|TiÃªu chÃ­/i.test(item)) {
+      return 'Criteria: bullets should reflect the main JD responsibilities, relevant technologies, your scope of ownership, and measurable outcomes.';
+    }
+  }
+
+  if (issueCode === 'missing_metrics' && /KhÃ´ng|Không|sá»‘ liá»‡u|số liệu|bullet/i.test(item)) {
+    return { excerpt: 'No Experience/Projects bullet contains measurable metrics.' };
+  }
+
+  return item;
+}
+
+function formatVietnameseSectionLabel(value) {
+  return String(value || '')
+    .split('/')
+    .map((part) => VI_SECTION_LABELS[part.trim()] || part.trim())
+    .join(' / ');
+}
+
 function localizeSectionLabel(value, language) {
   if (language !== 'vi') return value;
   const sectionMap = {
@@ -71,6 +134,10 @@ function localizeSectionLabel(value, language) {
 }
 
 function localizeEvidenceItem(item, issueCode, language) {
+  if (language === 'en') {
+    return translateEvidenceToEnglish(item, issueCode);
+  }
+
   if (issueCode === 'missing_metrics' && typeof item === 'string') {
     if (language === 'en' && /Không|số liệu|bullet/.test(item)) {
       return { excerpt: 'No Experience/Projects bullet contains measurable metrics.' };
@@ -89,7 +156,7 @@ function localizeEvidenceItem(item, issueCode, language) {
     && ['missing_sections', 'missing_recommended_sections'].includes(issueCode)
     && typeof item === 'string'
   ) {
-    return localizeSectionLabel(item, language);
+    return normalizeEnglishSectionLabel(item);
   }
   return item;
 }
@@ -136,24 +203,6 @@ function normalizeUnmatchedJdLines(items = []) {
     .slice(0, 5);
 }
 
-function removeEducationRequirement(items = []) {
-  return items.filter((item) => String(item).trim().toLowerCase() !== 'education');
-}
-
-function normalizeVisibleIssues(issues = []) {
-  return issues
-    .map((issue) => {
-      if (issue.code !== 'missing_sections') return issue;
-      const evidence = removeEducationRequirement(issue.evidence || []);
-      const details = removeEducationRequirement(issue.details || []);
-      return { ...issue, evidence, details };
-    })
-    .filter((issue) => {
-      if (issue.code !== 'missing_sections') return true;
-      return (issue.evidence || issue.details || []).length > 0;
-    });
-}
-
 function ScoreBar({ label, score, weight, t }) {
   const val = scoreValue(score);
   const tone = getTone(val);
@@ -179,12 +228,49 @@ function ScoreBar({ label, score, weight, t }) {
   );
 }
 
+function ScoreAxes({ axes = {}, language }) {
+  const labels = language === 'vi'
+    ? VI_SCORE_AXES_LABELS
+    : {
+      title: 'Score axes',
+      subtitle: 'Final score is secondary',
+      overall_fit: 'Overall fit',
+      skill_coverage: 'Skill coverage',
+      evidence_strength: 'Evidence strength',
+      cv_quality: 'CV quality',
+    };
+  const rows = [
+    ['overall_fit', labels.overall_fit],
+    ['skill_coverage', labels.skill_coverage],
+    ['evidence_strength', labels.evidence_strength],
+    ['cv_quality', labels.cv_quality],
+  ].filter(([key]) => axes[key] != null);
+
+  if (!rows.length) return null;
+
+  return (
+    <Card className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-bold text-gray-900 dark:text-white">{labels.title}</h3>
+        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+          {labels.subtitle}
+        </span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {rows.map(([key, label]) => (
+          <ScoreBar key={key} label={label} score={axes[key]} t={() => ''} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function EvidenceItem({ item, language, t }) {
   if (item == null) return null;
 
   if (typeof item === 'object') {
     const location = [
-      item.section ? localizeSectionLabel(item.section, language) : null,
+      item.section ? normalizeEnglishSectionLabel(item.section) : null,
       item.bullet_index ? t('evidence.itemLine', { index: item.bullet_index }) : null,
     ]
       .filter(Boolean)
@@ -229,6 +315,28 @@ function PillList({ items = [], colorClass = 'bg-gray-100 text-gray-700', t, for
   );
 }
 
+function PersonalInfoTemplate({ language }) {
+  const labels = language === 'vi'
+    ? VI_PERSONAL_INFO_LABELS
+    : ['Full name', 'Email', 'Job', 'LinkedIn', 'GitHub'];
+
+  return (
+    <div className="mt-4 rounded-lg border border-dashed border-gray-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-950/30">
+      <div className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">
+        {language === 'vi' ? VI_PERSONAL_INFO_TITLE : 'Personal info template'}
+      </div>
+      <div className="space-y-2">
+        {labels.map((label) => (
+          <div key={label} className="flex items-center gap-3">
+            <span className="w-28 shrink-0 text-sm font-medium text-gray-700 dark:text-slate-200">{label}</span>
+            <div className="h-9 flex-1 rounded border border-gray-200 bg-gray-50 dark:border-slate-700 dark:bg-slate-900" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function IssueCard({ issue, language, t }) {
   const severityStyles = {
     high: 'ui-soft-red',
@@ -248,6 +356,7 @@ function IssueCard({ issue, language, t }) {
     ));
   const title = t(`issue.${issue.code}.title`) || issue.title || issue.code?.replace(/_/g, ' ');
   const explanation = getLocalizedValue(issue, language, 'explanation_vi', 'explanation_en', 'explanation');
+  const isContactInfo = issue.code === 'contact_info';
   const cvWording = issue.optional_rewrite || issue.suggested_fix_en || '';
   const meaning = issue.optional_rewrite
     ? getLocalizedValue(issue, language, 'optional_rewrite_meaning_vi', 'optional_rewrite_meaning_en', 'fix_meaning_vi')
@@ -261,7 +370,7 @@ function IssueCard({ issue, language, t }) {
         </span>
         {issue.section && (
           <span className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-500 dark:border-slate-700 dark:text-slate-400">
-            {localizeSectionLabel(issue.section, language)}
+            {normalizeEnglishSectionLabel(issue.section)}
           </span>
         )}
       </div>
@@ -287,7 +396,7 @@ function IssueCard({ issue, language, t }) {
         </div>
       )}
 
-      {(cvWording || meaning) && (
+      {!isContactInfo && (cvWording || meaning) && (
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {cvWording && (
             <div className="ui-soft-blue rounded-lg p-4">
@@ -303,6 +412,8 @@ function IssueCard({ issue, language, t }) {
           )}
         </div>
       )}
+
+      {isContactInfo && <PersonalInfoTemplate language={language} />}
     </div>
   );
 }
@@ -343,7 +454,7 @@ function RewriteExamples({ examples = [], language, t }) {
           <div key={index} className="ui-surface rounded-lg p-4">
             <div className="mb-2 flex flex-wrap gap-2">
               <span className="ui-soft-blue rounded px-2 py-1 text-xs font-bold">
-                {localizeSectionLabel(example.target_section || 'CV', language)}
+                {normalizeEnglishSectionLabel(example.target_section || 'CV')}
               </span>
               <span className="text-sm font-semibold text-gray-900 dark:text-white">{example.label}</span>
             </div>
@@ -430,6 +541,7 @@ export default function MatchReport({ matchId, compact = false }) {
   const {
     summary = {},
     score_breakdown: scoreBreakdown = {},
+    score_axes: scoreAxes = {},
     score_weights: scoreWeights = {},
     skills_summary: skillsSummary,
     section_analysis: sectionAnalysis,
@@ -440,10 +552,8 @@ export default function MatchReport({ matchId, compact = false }) {
 
   const finalScore = Number(summary.final_score) || 0;
   const scoreTone = getTone(finalScore, summary.color);
-  const visibleIssues = normalizeVisibleIssues(issues);
-  const visibleMissingSections = removeEducationRequirement(
-    sectionAnalysis?.missing_required_sections || [],
-  );
+  const visibleIssues = issues;
+  const visibleMissingSections = sectionAnalysis?.missing_required_sections || [];
 
   const scoreRows = SCORE_ROWS.filter(
     ([key]) => scoreWeights[key] != null || scoreBreakdown[key] != null,
@@ -501,6 +611,8 @@ export default function MatchReport({ matchId, compact = false }) {
         </div>
       </Card>
 
+      <ScoreAxes axes={scoreAxes} language={language} />
+
       {skillsSummary && (
         <Card>
           <h3 className="mb-2 font-bold text-gray-900 dark:text-white">{t('report.skillsSummary')}</h3>
@@ -534,7 +646,7 @@ export default function MatchReport({ matchId, compact = false }) {
                 items={sectionAnalysis.sections_found || []}
                 colorClass="bg-blue-50 text-blue-700 border border-blue-200 dark:bg-sky-950/40 dark:text-sky-100 dark:border-sky-700/50"
                 t={t}
-                formatItem={(item) => localizeSectionLabel(item, language)}
+                formatItem={(item) => normalizeEnglishSectionLabel(item)}
               />
             </div>
             <div>
@@ -543,7 +655,7 @@ export default function MatchReport({ matchId, compact = false }) {
                 items={visibleMissingSections}
                 colorClass="bg-red-50 text-red-700 border border-red-200 dark:bg-rose-950/40 dark:text-rose-100 dark:border-rose-700/50"
                 t={t}
-                formatItem={(item) => localizeSectionLabel(item, language)}
+                formatItem={(item) => normalizeEnglishSectionLabel(item)}
               />
             </div>
           </div>
