@@ -91,6 +91,22 @@ def _delete_file_from_storage(bucket: str, storage_path: str) -> bool:
     return response.status_code in (200, 204, 404)
 
 
+def _download_file_from_storage(bucket: str, storage_path: str) -> tuple[bytes, str]:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise RuntimeError("SUPABASE_URL vÃ  SUPABASE_SERVICE_KEY pháº£i Ä‘Æ°á»£c set trong .env")
+
+    download_url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{storage_path}"
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "apikey": SUPABASE_SERVICE_KEY,
+    }
+    response = requests.get(download_url, headers=headers, timeout=30)
+    if response.status_code != 200:
+        raise RuntimeError(f"Táº£i file tháº¥t báº¡i: {response.status_code} - {response.text}")
+
+    return response.content, response.headers.get("Content-Type", "application/octet-stream")
+
+
 def _extract_file_content(file_storage, bucket: str, user_id: int) -> Tuple[bytes, str, str, str]:
     filename = file_storage.filename.lower()
 
@@ -156,7 +172,7 @@ def create_signed_url(bucket: str, storage_path: str, expires_in: int = 3600) ->
         raise RuntimeError(f"Tạo signed URL thất bại: {response.status_code} - {response.text}")
 
     data = response.json()
-    token_path = data.get("url", "")
+    token_path = data.get("signedURL") or data.get("signedUrl") or data.get("url", "")
     if not token_path:
         raise RuntimeError("Supabase không trả về URL - kiểm tra quyền bucket")
 
@@ -186,6 +202,14 @@ def delete_cv(storage_path: str) -> bool:
 
 def delete_jd(storage_path: str) -> bool:
     return _delete_file_from_storage(BUCKET_JD, storage_path)
+
+
+def download_cv(storage_path: str) -> tuple[bytes, str]:
+    return _download_file_from_storage(BUCKET_CV, storage_path)
+
+
+def download_jd(storage_path: str) -> tuple[bytes, str]:
+    return _download_file_from_storage(BUCKET_JD, storage_path)
 
 
 def upload_avatar(file_storage, user_id: int) -> tuple[str, str]:

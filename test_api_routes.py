@@ -23,6 +23,7 @@ from src.db.models import CVDocument, JDDocument, User  # noqa: E402
 from src.services.auth.password_service import hash_password  # noqa: E402
 import src.services.auth.account_service as auth_account_service  # noqa: E402
 import src.api.auth_routes as auth_routes  # noqa: E402
+import src.api.routes.file_routes as file_routes  # noqa: E402
 import src.services.documents.cv_service as cv_service  # noqa: E402
 import src.services.documents.jd_service as jd_service  # noqa: E402
 
@@ -288,6 +289,54 @@ def test_jd_upload_and_match_flow():
         jd_service.storage_upload_jd = original_upload_jd
 
 
+def test_cv_file_content_route_streams_pdf_blob():
+    reset_db()
+    create_verified_user()
+    token = issue_access_token()
+
+    original_get_cv_file_payload = file_routes.get_cv_file_payload
+    file_routes.get_cv_file_payload = lambda user_id, cv_id: {
+        "file_bytes": b"%PDF-1.4 fake cv",
+        "content_type": "application/pdf",
+        "filename": "candidate.pdf",
+    }
+    try:
+        response = client.get(
+            "/api/cvs/file/123/content",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200, response.get_data(as_text=True)
+        assert response.data == b"%PDF-1.4 fake cv"
+        assert response.headers["Content-Type"].startswith("application/pdf")
+        assert 'inline; filename="candidate.pdf"' == response.headers["Content-Disposition"]
+    finally:
+        file_routes.get_cv_file_payload = original_get_cv_file_payload
+
+
+def test_jd_file_content_route_streams_text_blob():
+    reset_db()
+    create_verified_user()
+    token = issue_access_token()
+
+    original_get_jd_file_payload = file_routes.get_jd_file_payload
+    file_routes.get_jd_file_payload = lambda user_id, jd_id: {
+        "file_bytes": b"Senior backend engineer",
+        "content_type": "text/plain",
+        "filename": "job.txt",
+    }
+    try:
+        response = client.get(
+            "/api/jds/file/456/content",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200, response.get_data(as_text=True)
+        assert response.data == b"Senior backend engineer"
+        assert response.headers["Content-Type"].startswith("text/plain")
+        assert 'inline; filename="job.txt"' == response.headers["Content-Disposition"]
+    finally:
+        file_routes.get_jd_file_payload = original_get_jd_file_payload
+
+
 if __name__ == "__main__":
     tests = [
         ("Register missing field returns standard error", test_register_missing_field_returns_standard_error),
@@ -298,6 +347,8 @@ if __name__ == "__main__":
         ("Match route validation is preserved", test_match_route_validation_is_preserved),
         ("CV upload route works with mock storage", test_cv_upload_route_with_mock_storage),
         ("JD upload and match flow works with mock storage", test_jd_upload_and_match_flow),
+        ("CV file content route streams PDF blob", test_cv_file_content_route_streams_pdf_blob),
+        ("JD file content route streams text blob", test_jd_file_content_route_streams_text_blob),
     ]
 
     for name, fn in tests:

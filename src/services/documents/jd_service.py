@@ -8,6 +8,7 @@ from src.db.repository import JDRepository, MatchRepository, UserRepository
 from src.services.storage import (
     BUCKET_JD,
     create_access_url,
+    download_jd as storage_download_jd,
     delete_jd as storage_delete_jd,
     upload_jd as storage_upload_jd,
 )
@@ -100,8 +101,31 @@ def get_jd_access_payload(*, user_id: int, jd_id: int, expires_in: int = 3600) -
             raise NotFoundError("JD not found")
         if not record.storage_path:
             raise NotFoundError("JD file not found in storage")
-
-        url, mode = create_access_url(BUCKET_JD, record.storage_path, expires_in=expires_in)
+        try:
+            url, mode = create_access_url(BUCKET_JD, record.storage_path, expires_in=expires_in)
+        except Exception as exc:
+            raise ValidationError("Unable to open this JD file right now. Please try again later.") from exc
         return {"url": url, "expires_in": expires_in, "mode": mode}
+    finally:
+        db.close()
+
+
+def get_jd_file_payload(*, user_id: int, jd_id: int) -> dict:
+    db = SessionLocal()
+    try:
+        record = JDRepository(db).get_for_user(jd_id, user_id)
+        if not record:
+            raise NotFoundError("JD not found")
+        if not record.storage_path:
+            raise NotFoundError("JD file not found in storage")
+        try:
+            file_bytes, content_type = storage_download_jd(record.storage_path)
+        except Exception as exc:
+            raise ValidationError("Unable to download this JD file right now. Please try again later.") from exc
+        return {
+            "file_bytes": file_bytes,
+            "content_type": content_type,
+            "filename": record.original_filename,
+        }
     finally:
         db.close()

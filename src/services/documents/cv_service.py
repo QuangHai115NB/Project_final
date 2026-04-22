@@ -8,6 +8,7 @@ from src.db.repository import CVRepository, MatchRepository, UserRepository
 from src.services.storage import (
     BUCKET_CV,
     create_access_url,
+    download_cv as storage_download_cv,
     delete_cv as storage_delete_cv,
     upload_cv as storage_upload_cv,
 )
@@ -96,8 +97,31 @@ def get_cv_access_payload(*, user_id: int, cv_id: int, expires_in: int = 3600) -
             raise NotFoundError("CV not found")
         if not record.storage_path:
             raise NotFoundError("CV file not found in storage")
-
-        url, mode = create_access_url(BUCKET_CV, record.storage_path, expires_in=expires_in)
+        try:
+            url, mode = create_access_url(BUCKET_CV, record.storage_path, expires_in=expires_in)
+        except Exception as exc:
+            raise ValidationError("Unable to open this CV file right now. Please try again later.") from exc
         return {"url": url, "expires_in": expires_in, "mode": mode}
+    finally:
+        db.close()
+
+
+def get_cv_file_payload(*, user_id: int, cv_id: int) -> dict:
+    db = SessionLocal()
+    try:
+        record = CVRepository(db).get_for_user(cv_id, user_id)
+        if not record:
+            raise NotFoundError("CV not found")
+        if not record.storage_path:
+            raise NotFoundError("CV file not found in storage")
+        try:
+            file_bytes, content_type = storage_download_cv(record.storage_path)
+        except Exception as exc:
+            raise ValidationError("Unable to download this CV file right now. Please try again later.") from exc
+        return {
+            "file_bytes": file_bytes,
+            "content_type": content_type,
+            "filename": record.original_filename,
+        }
     finally:
         db.close()

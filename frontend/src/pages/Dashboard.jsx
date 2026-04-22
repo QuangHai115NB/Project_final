@@ -64,13 +64,30 @@ function CvDetailModal({ cv, onClose }) {
 
   useEffect(() => {
     if (!cv) return;
+    let cancelled = false;
+    let nextUrl = null;
     setLoading(true);
     setError(null);
     setUrl(null);
-    cvAPI.getSignedUrl(cv.id)
-      .then(({ data }) => setUrl(data.url))
-      .catch((err) => setError(err.response?.data?.error || t('dashboard.fileErrorCv')))
-      .finally(() => setLoading(false));
+    cvAPI.downloadFile(cv.id)
+      .then(({ data }) => {
+        nextUrl = URL.createObjectURL(data);
+        if (cancelled) {
+          URL.revokeObjectURL(nextUrl);
+          return;
+        }
+        setUrl(nextUrl);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err?.response?.data?.error || t('dashboard.fileErrorCv'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      if (nextUrl) URL.revokeObjectURL(nextUrl);
+    };
   }, [cv?.id, t]);
 
   if (!cv) return null;
@@ -125,9 +142,14 @@ function JdDetailModal({ jd, onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const iframeRef = useRef(null);
+  const lowerFilename = jd?.original_filename?.toLowerCase() || '';
+  const isTextFile = lowerFilename.endsWith('.txt');
+  const isPdfFile = lowerFilename.endsWith('.pdf');
 
   useEffect(() => {
     if (!jd) return;
+    let cancelled = false;
+    let nextUrl = null;
     setLoading(true);
     setError(null);
     setUrl(null);
@@ -137,10 +159,25 @@ function JdDetailModal({ jd, onClose }) {
       return;
     }
 
-    jdAPI.getSignedUrl(jd.id)
-      .then(({ data }) => setUrl(data.url))
-      .catch((err) => setError(err.response?.data?.error || t('dashboard.fileErrorJd')))
-      .finally(() => setLoading(false));
+    jdAPI.downloadFile(jd.id)
+      .then(({ data }) => {
+        nextUrl = URL.createObjectURL(data);
+        if (cancelled) {
+          URL.revokeObjectURL(nextUrl);
+          return;
+        }
+        setUrl(nextUrl);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err?.response?.data?.error || t('dashboard.fileErrorJd'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      if (nextUrl) URL.revokeObjectURL(nextUrl);
+    };
   }, [jd?.id, t]);
 
   if (!jd) return null;
@@ -187,11 +224,19 @@ function JdDetailModal({ jd, onClose }) {
         )}
 
         {url && !loading && (
-          jd.original_filename?.endsWith('.txt') ? (
+          isTextFile ? (
             <iframe
               ref={iframeRef}
               src={url}
               className="w-full rounded-lg border border-gray-200 bg-gray-50"
+              style={{ height: '70vh' }}
+              title={`JD: ${jd.title}`}
+            />
+          ) : isPdfFile ? (
+            <iframe
+              ref={iframeRef}
+              src={`${url}#toolbar=1&navpanes=1&scrollbar=1`}
+              className="w-full rounded-lg border border-gray-200"
               style={{ height: '70vh' }}
               title={`JD: ${jd.title}`}
             />
@@ -566,6 +611,9 @@ export default function Dashboard() {
                 <p className="truncate text-sm font-semibold text-gray-800 dark:text-slate-100">
                   {user?.full_name || tx('profile.noName', 'Người dùng')}
                 </p>
+                {user?.headline && (
+                  <p className="truncate text-xs font-medium text-gray-600 dark:text-slate-300">{user.headline}</p>
+                )}
                 <p className="truncate text-xs text-gray-500 dark:text-slate-400">{user?.email}</p>
               </div>
             </div>
@@ -602,6 +650,11 @@ export default function Dashboard() {
                 <UserAvatar user={user} size="sm" />
                 <div>
                   <h1 className="text-lg font-black text-primary dark:text-blue-300">{t('app.name')}</h1>
+                  {user?.headline && (
+                    <p className="max-w-[160px] truncate text-xs font-medium text-gray-700 dark:text-slate-200">
+                      {user.headline}
+                    </p>
+                  )}
                   <p className="max-w-[160px] truncate text-xs text-gray-500 dark:text-slate-400">{user?.email}</p>
                 </div>
               </div>

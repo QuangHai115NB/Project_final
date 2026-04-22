@@ -140,6 +140,10 @@ export const cvAPI = {
   getSignedUrl: (cvId) => {
     return api.get(`/cvs/file/${cvId}`);
   },
+
+  downloadFile: (cvId) => api.get(`/cvs/file/${cvId}/content`, {
+    responseType: 'blob',
+  }),
 };
 
 // ── JD API ────────────────────────────────────────────
@@ -161,6 +165,10 @@ export const jdAPI = {
   getSignedUrl: (jdId) => {
     return api.get(`/jds/file/${jdId}`);
   },
+
+  downloadFile: (jdId) => api.get(`/jds/file/${jdId}/content`, {
+    responseType: 'blob',
+  }),
 };
 
 // ── Match API ──────────────────────────────────────────

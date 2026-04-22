@@ -89,11 +89,39 @@ def test_storage_access_url_raises_without_public_fallback():
         storage.create_signed_url = original_signer
 
 
+def test_storage_signed_url_accepts_supabase_signedurl_field():
+    original_url = storage.SUPABASE_URL
+    original_key = storage.SUPABASE_SERVICE_KEY
+    original_post = storage.requests.post
+
+    class DummyResponse:
+        status_code = 200
+        text = "ok"
+
+        @staticmethod
+        def json():
+            return {"signedURL": "/storage/v1/object/sign/cv-uploads/user_1/file.pdf?token=abc"}
+
+    storage.SUPABASE_URL = "https://example.supabase.co"
+    storage.SUPABASE_SERVICE_KEY = "service-role-key"
+    storage.requests.post = lambda *args, **kwargs: DummyResponse()
+    try:
+        url = storage.create_signed_url("cv-uploads", "user_1/file.pdf")
+        assert url == (
+            "https://example.supabase.co/storage/v1/object/sign/cv-uploads/user_1/file.pdf?token=abc"
+        ), "Signed URL should support Supabase's signedURL response field"
+    finally:
+        storage.SUPABASE_URL = original_url
+        storage.SUPABASE_SERVICE_KEY = original_key
+        storage.requests.post = original_post
+
+
 if __name__ == "__main__":
     tests = [
         ("SQLite init_db works", test_sqlite_init_db),
         ("Register updates password for unverified account", test_register_updates_password_for_unverified_account),
         ("Storage access respects disabled public fallback", test_storage_access_url_raises_without_public_fallback),
+        ("Storage signed URL supports Supabase signedURL field", test_storage_signed_url_accepts_supabase_signedurl_field),
     ]
 
     for name, fn in tests:
