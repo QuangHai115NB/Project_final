@@ -9,9 +9,15 @@ Compatible với jd_matcher.py v2 output schema.
 import re
 from typing import Any, Dict, List
 from src.data.rules_config import (
-    REPORT_SCORE_WEIGHTS,
     SCORE_LABELS,
     SCORE_COLOR_THRESHOLDS,
+)
+from src.data.skills_taxonomy import SKILL_TAXONOMY_VERSION
+from src.services.scoring import (
+    REPORT_SCHEMA_VERSION,
+    SCORING_VERSION,
+    FINAL_SCORE_COMPONENT_WEIGHTS,
+    compute_scorecard,
 )
 
 
@@ -51,29 +57,6 @@ def _is_semantic_available(jd_report: Dict[str, Any], semantic_score: float) -> 
     if status in {"disabled", "unavailable", "error"}:
         return False
     return semantic_score > 0
-
-
-def _normalize_weights(base_weights: Dict[str, float], disabled_keys=None) -> Dict[str, float]:
-    disabled = set(disabled_keys or [])
-    active = {
-        key: float(weight)
-        for key, weight in base_weights.items()
-        if key not in disabled and float(weight) > 0
-    }
-    total = sum(active.values())
-    if total <= 0:
-        return {}
-    return {
-        key: round(weight * 100.0 / total, 2)
-        for key, weight in active.items()
-    }
-
-
-def _weighted_score(scores: Dict[str, float], weights: Dict[str, float]) -> float:
-    return round(
-        sum(float(scores.get(key, 0.0)) * float(weight) / 100.0 for key, weight in weights.items()),
-        2,
-    )
 
 
 def _clean_display_line(value: Any) -> str:
@@ -177,12 +160,13 @@ def build_match_report(
         "experience_score": experience_score,
         "jd_structure_score": jd_structure_score,
     }
-    disabled_weight_keys = []
-    if not _is_semantic_available(jd_report, semantic_score):
-        disabled_weight_keys.append("semantic_score")
-
-    score_weights = _normalize_weights(REPORT_SCORE_WEIGHTS, disabled_weight_keys)
-    final_score = min(100.0, max(0.0, _weighted_score(score_values, score_weights)))
+    semantic_is_active = _is_semantic_available(jd_report, semantic_score)
+    scorecard = compute_scorecard(
+        score_values,
+        semantic_available=semantic_is_active,
+    )
+    score_weights = scorecard["final_score_weights"]
+    final_score = scorecard["final_score"]
 
     # ── Merge issues từ tất cả sources ──────────────────────────────
     # jd_report v2 đã có suggested_fix trong từng issue
@@ -239,6 +223,7 @@ def build_match_report(
     )
 
     return {
+        "report_schema_version": REPORT_SCHEMA_VERSION,
         "summary": {
             "final_score": final_score,
             "label": _score_label(final_score),
@@ -249,6 +234,7 @@ def build_match_report(
             "top_priorities": top_priorities,
         },
         "score_breakdown": score_breakdown,
+        "score_axes": scorecard["score_axes"],
         "score_weights": score_weights,
         "skills_summary": skills_summary,
         "section_analysis": {
@@ -267,8 +253,18 @@ def build_match_report(
         "issues": all_issues,
         "suggestions": all_suggestions,
         "rewrite_examples": jd_report.get("rewrite_examples", []),
+        "scoring": {
+            "scoring_version": SCORING_VERSION,
+            "skill_taxonomy_version": SKILL_TAXONOMY_VERSION,
+            "semantic_status": semantic_detail.get("status", "unavailable"),
+            "semantic_available": semantic_is_active,
+            "base_component_weights": FINAL_SCORE_COMPONENT_WEIGHTS,
+            "weights_used": score_weights,
+            "disabled_dimensions": scorecard["disabled_dimensions"],
+        },
         "snapshots": {
             "cv_excerpt": cv_text[:500],
             "jd_excerpt": jd_text[:500],
+            "score_values": {key: round(float(value), 2) for key, value in score_values.items()},
         },
     }

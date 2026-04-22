@@ -4,6 +4,8 @@ from collections import defaultdict
 import re
 from typing import Dict, List
 
+SKILL_TAXONOMY_VERSION = "2026-04-21-v1"
+
 SKILL_TAXONOMY = {
     "programming_languages": {
         "python": ["python", "python3"],

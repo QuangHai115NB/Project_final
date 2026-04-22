@@ -14,6 +14,7 @@ from src.data.rules_config import (
     MAX_KEYWORDS,
 )
 from src.data.skills_taxonomy import extract_skills
+from src.services.scoring import compute_scorecard
 from src.services.text_preprocess import normalize_for_matching, split_lines
 
 # Import semantic matcher — graceful fallback nếu chưa cài
@@ -72,6 +73,54 @@ def _is_preferred_line(line: str) -> bool:
     return any(marker in lowered for marker in JD_PREFERRED_MARKERS)
 
 
+def _detect_jd_skill_section(line: str) -> str | None:
+    normalized = re.sub(r"[^a-z\s/&-]", " ", (line or "").lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip(" :-")
+    if not normalized:
+        return None
+
+    section_markers = {
+        "required": (
+            "requirements",
+            "requirement",
+            "required qualifications",
+            "minimum qualifications",
+            "qualifications",
+            "must have",
+            "what you need",
+        ),
+        "preferred": (
+            "preferred",
+            "preferred qualifications",
+            "nice to have",
+            "nice to haves",
+            "bonus",
+            "plus",
+        ),
+        "responsibilities": (
+            "responsibilities",
+            "key responsibilities",
+            "what you will do",
+            "what you'll do",
+            "your role",
+            "job duties",
+        ),
+        "benefits": (
+            "benefits",
+            "why join us",
+            "what we offer",
+            "perks",
+            "compensation and benefits",
+        ),
+    }
+    for section_name, markers in section_markers.items():
+        if normalized in markers:
+            return section_name
+        if any(normalized.startswith(marker) for marker in markers):
+            return section_name
+    return None
+
+
 def _is_excluded_keyword(term: str) -> bool:
     lowered = term.strip().lower()
     if not lowered or lowered in KEYWORD_BLACKLIST or lowered.isdigit():
@@ -88,23 +137,38 @@ def _extract_jd_skills(jd_text: str) -> Dict[str, List[str]]:
     """
     required: Set[str] = set()
     preferred: Set[str] = set()
+    contextual: Set[str] = set()
+    current_section = None
 
     for line in split_lines(jd_text):
+        detected_section = _detect_jd_skill_section(line)
+        if detected_section:
+            current_section = detected_section
+            continue
+
         line_skills = set(extract_skills(line).get("skills", []))
         if not line_skills:
             continue
-        if _is_preferred_line(line):
+        if current_section == "preferred" or _is_preferred_line(line):
             preferred.update(line_skills)
+        elif current_section == "required":
+            required.update(line_skills)
+        elif current_section == "responsibilities":
+            contextual.update(line_skills)
+        elif current_section == "benefits":
+            continue
         else:
             required.update(line_skills)
 
-    if not required and not preferred:
+    if not required and not preferred and not contextual:
         required.update(extract_skills(jd_text).get("skills", []))
 
     preferred = preferred - required
+    contextual = contextual - required - preferred
     return {
         "required": sorted(required),
         "preferred": sorted(preferred),
+        "contextual": sorted(contextual),
     }
 
 
@@ -160,7 +224,7 @@ def _compute_semantic_score(
     """
     experience_text = "\n".join(
         cv_sections.get(sec, "")
-        for sec in ("Skills", "Experience", "Projects", "Summary")
+        for sec in ("Experience", "Projects")
     ).strip()
 
     if not experience_text:
@@ -407,7 +471,7 @@ def _compute_experience_score(
     Returns: (score_0_100, detail_dict)
     """
     experience_text = "\n".join(
-        cv_sections.get(sec, "") for sec in ("Experience", "Projects", "Summary")
+        cv_sections.get(sec, "") for sec in ("Experience", "Projects")
     ).strip() or cv_text
 
     cv_years = _extract_years_of_experience(experience_text)
@@ -872,6 +936,7 @@ def match_cv_to_jd(
     jd_skill_info = _extract_jd_skills(jd_text)
     required_skills = set(jd_skill_info["required"])
     preferred_skills = set(jd_skill_info["preferred"])
+    contextual_skills = set(jd_skill_info.get("contextual", []))
 
     # ── Layer 1: Skill Score ──
     skill_score, skill_detail = _compute_skill_score(
@@ -918,6 +983,24 @@ def match_cv_to_jd(
         )
 
     # ── Generate Issues & Suggestions ──
+    semantic_is_active = bool(
+        use_semantic
+        and semantic_detail.get("status") not in {"disabled", "unavailable", "error"}
+        and semantic_score > 0
+    )
+    scorecard = compute_scorecard(
+        {
+            "skill_score": skill_score,
+            "semantic_score": semantic_score,
+            "keyword_score": keyword_score,
+            "experience_score": experience_score,
+            "jd_structure_score": structure_score,
+            "section_score": 0.0,
+        },
+        semantic_available=semantic_is_active,
+    )
+    final_score = scorecard["score_axes"]["overall_fit"]
+
     issues, suggestions = _generate_errors_and_suggestions(
         skill_detail=skill_detail,
         keyword_detail=keyword_detail,
@@ -938,6 +1021,7 @@ def match_cv_to_jd(
 
     return {
         "match_score": round(final_score, 2),
+        "fit_score": round(final_score, 2),
         "score_breakdown": {
             "skill_score": round(skill_score, 2),
             "semantic_score": round(semantic_score, 2),
@@ -949,6 +1033,7 @@ def match_cv_to_jd(
             "cv_skills": sorted(cv_skills),
             "required_skills": sorted(required_skills),
             "preferred_skills": sorted(preferred_skills),
+            "contextual_skills": sorted(contextual_skills),
             **skill_detail,
             "score": round(skill_score, 2),
         },
@@ -972,7 +1057,7 @@ def match_cv_to_jd(
         "suggestions": suggestions,
         "rewrite_examples": rewrite_examples,
         "meta": {
-            "semantic_available": SEMANTIC_AVAILABLE and use_semantic,
+            "semantic_available": semantic_is_active,
             "suggestion_engine_available": SUGGESTION_ENGINE_AVAILABLE,
             "cv_skills_count": len(cv_skills),
             "required_skills_count": len(required_skills),

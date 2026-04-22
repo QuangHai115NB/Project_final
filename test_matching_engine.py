@@ -325,6 +325,111 @@ def test_structure_score_strong_cv():
     )
 
 
+def test_jd_section_parser_respects_preferred_block():
+    """Preferred section bullets khÃ´ng Ä‘Æ°á»£c rÆ¡i sang required."""
+    from src.services.jd_matcher import _extract_jd_skills
+
+    jd_text = """
+    Requirements:
+    - Python
+    - Django
+
+    Preferred:
+    - AWS
+    - Kubernetes
+
+    Responsibilities:
+    - Build REST APIs and maintain PostgreSQL workloads
+    """
+
+    result = _extract_jd_skills(jd_text)
+
+    assert "python" in result["required"]
+    assert "django" in result["required"]
+    assert "aws" in result["preferred"]
+    assert "kubernetes" in result["preferred"]
+    assert "aws" not in result["required"], "Preferred skill leaked into required"
+    assert "postgresql" in result["contextual"], "Responsibilities should be tracked separately"
+
+
+def test_semantic_score_ignores_summary_and_skills_padding():
+    """Copy JD vÃ o Summary/Skills khÃ´ng Ä‘Æ°á»£c lÃ m semantic score tÄƒng."""
+    from src.services.jd_matcher import _compute_semantic_score
+
+    sections = {
+        "Summary": SAMPLE_JD,
+        "Skills": "Python, Django, PostgreSQL, Docker, AWS",
+        "Experience": "",
+        "Projects": "",
+    }
+
+    score, detail = _compute_semantic_score(sections, SAMPLE_JD)
+
+    assert score == 0.0, f"Semantic score should ignore Summary/Skills padding, got {score}"
+    assert detail.get("semantic_score", 0.0) == 0.0
+
+
+def test_skill_evidence_is_alias_aware():
+    """Evidence matching pháº£i nháº­n alias canonical nhÆ° postgres -> postgresql."""
+    from src.services.semantic_matcher import find_skill_context_in_cv
+
+    context = find_skill_context_in_cv(
+        "postgresql",
+        {
+            "Skills": "PostgreSQL, Redis",
+            "Experience": "- Optimized Postgres queries and indexing strategy for analytics workloads.",
+            "Projects": "",
+        },
+    )
+
+    assert context["in_skills_section"] is True
+    assert context["has_evidence"] is True
+
+
+def test_report_contains_versioned_scoring_snapshot():
+    """Report pháº£i lÆ°u schema/scoring snapshot Ä‘á»ƒ tái láº­p."""
+    from types import SimpleNamespace
+
+    from src.services.report_builder import build_match_report
+    from src.services.rule_checker import run_rule_checks
+    from src.services.section_parser import parse_sections
+    from src.services.jd_matcher import match_cv_to_jd
+
+    parsed = parse_sections(SAMPLE_CV_STRONG)
+    rule_report = run_rule_checks(SAMPLE_CV_STRONG, parsed)
+    jd_report = match_cv_to_jd(
+        SAMPLE_CV_STRONG,
+        SAMPLE_JD,
+        parsed,
+        use_semantic=False,
+        use_suggestion_engine=False,
+    )
+    report = build_match_report(
+        cv_record=SimpleNamespace(title="Strong CV"),
+        jd_record=SimpleNamespace(title="Sample JD"),
+        cv_text=SAMPLE_CV_STRONG,
+        jd_text=SAMPLE_JD,
+        parsed_sections=parsed,
+        rule_report=rule_report,
+        jd_report=jd_report,
+    )
+
+    assert report["report_schema_version"], "Missing report_schema_version"
+    assert report["scoring"]["scoring_version"], "Missing scoring_version"
+    assert report["scoring"]["skill_taxonomy_version"], "Missing skill taxonomy version"
+    assert report["scoring"]["weights_used"], "Missing weights_used snapshot"
+    assert report["snapshots"]["score_values"], "Missing score_values snapshot"
+
+    recomputed = round(
+        sum(
+            float(report["snapshots"]["score_values"].get(key, 0.0)) * float(weight) / 100.0
+            for key, weight in report["score_weights"].items()
+        ),
+        2,
+    )
+    assert recomputed == round(float(report["summary"]["final_score"]), 2)
+
+
 # ─── Run all tests ────────────────────────────────────────────────────
 
 def test_semantic_fallback_score_not_zero():
@@ -363,6 +468,10 @@ if __name__ == "__main__":
         ("Section Parser", test_section_parser_with_sample_cv),
         ("Keyword Score", test_keyword_score),
         ("Structure Score", test_structure_score_strong_cv),
+        ("JD Section Parser", test_jd_section_parser_respects_preferred_block),
+        ("Semantic Ignores Summary Padding", test_semantic_score_ignores_summary_and_skills_padding),
+        ("Alias-aware Skill Evidence", test_skill_evidence_is_alias_aware),
+        ("Versioned Scoring Snapshot", test_report_contains_versioned_scoring_snapshot),
         ("Semantic Fallback Score", test_semantic_fallback_score_not_zero),
     ]
 

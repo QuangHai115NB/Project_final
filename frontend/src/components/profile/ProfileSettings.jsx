@@ -40,7 +40,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
 
   const [profileForm, setProfileForm] = useState({
     full_name: user?.full_name || '',
-    phone: user?.phone || '',
+    headline: user?.headline || '',
   });
   const [passwordForm, setPasswordForm] = useState({
     oldPassword: '',
@@ -54,7 +54,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
   useEffect(() => {
     setProfileForm({
       full_name: user?.full_name || '',
-      phone: user?.phone || '',
+      headline: user?.headline || '',
     });
   }, [user]);
 
@@ -164,7 +164,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
               <AvatarPreview user={user} />
               <div className="text-white">
                 <h3 className="text-xl font-black">{user?.full_name || tx('profile.noName', 'Chua cap nhat ten')}</h3>
-                <p className="mt-1 text-sm text-blue-50">{user?.email}</p>
+                <p className="mt-1 text-sm text-blue-50">{user?.headline || user?.email}</p>
               </div>
             </div>
           </div>
@@ -235,14 +235,12 @@ export default function ProfileSettings({ t, tx, showToast }) {
               name="full_name"
               value={profileForm.full_name}
               onChange={handleProfileChange}
-              placeholder={tx('profile.fullNamePlaceholder', 'Nguyen Van A')}
             />
             <Input
-              label={tx('profile.phone', 'So dien thoai')}
-              name="phone"
-              value={profileForm.phone}
+              label={tx('profile.job', 'Job')}
+              name="headline"
+              value={profileForm.headline}
               onChange={handleProfileChange}
-              placeholder={tx('profile.phonePlaceholder', '0901234567')}
             />
             <div className="md:col-span-2 flex justify-end">
               <Button type="submit" loading={savingProfile}>

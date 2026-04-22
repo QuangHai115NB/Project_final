@@ -45,10 +45,27 @@ def check_cv_length(text: str) -> Dict[str, object]:
 
 def check_contact_info(text: str) -> Dict[str, bool]:
     lowered = text.lower()
+    header_excerpt = "\n".join((text or "").splitlines()[:10])
+    job_title_patterns = [
+        r"\bsoftware engineer\b",
+        r"\bbackend engineer\b",
+        r"\bfrontend engineer\b",
+        r"\bfull[\s-]?stack\b",
+        r"\bdeveloper\b",
+        r"\bengineer\b",
+        r"\bdata analyst\b",
+        r"\bdata scientist\b",
+        r"\bdesigner\b",
+        r"\bproduct manager\b",
+        r"\bqa\b",
+        r"\btester\b",
+        r"\bintern\b",
+        r"\barchitect\b",
+    ]
 
     return {
         "has_email": bool(re.search(r"[\w\.-]+@[\w\.-]+\.\w+", text)),
-        "has_phone": bool(re.search(r"(\+\d{1,3}\s?)?(\(?\d{2,4}\)?[\s.-]?)?\d{3,4}[\s.-]?\d{3,4}", text)),
+        "has_job_title": any(re.search(pattern, header_excerpt, re.IGNORECASE) for pattern in job_title_patterns),
         "has_linkedin": ("linkedin.com" in lowered) or ("linkedin" in lowered),
         "has_github": ("github.com" in lowered) or ("github" in lowered),
     }

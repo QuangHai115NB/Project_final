@@ -26,7 +26,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
 
 from src.data.rules_config import KEYWORD_EXCLUDED_PATTERNS
-from src.data.skills_taxonomy import extract_skills
+from src.data.skills_taxonomy import extract_skills, normalize_skill_name
 from src.services.text_preprocess import normalize_for_matching
 
 # Lazy import để tránh crash nếu chưa cài
@@ -402,7 +402,7 @@ def find_skill_context_in_cv(
         "evidence_bullets": [str]       # Các bullet chứa skill
     }
     """
-    skill_lower = skill_name.lower()
+    canonical_skill = normalize_skill_name(skill_name)
     result = {
         "in_skills_section": False,
         "in_experience_section": False,
@@ -411,8 +411,8 @@ def find_skill_context_in_cv(
         "evidence_bullets": [],
     }
 
-    skills_text = cv_sections.get("Skills", "").lower()
-    if skill_lower in skills_text:
+    skills_text = cv_sections.get("Skills", "")
+    if canonical_skill in extract_skills(skills_text).get("skills", []):
         result["in_skills_section"] = True
 
     for section_name in ("Experience", "Projects"):
@@ -421,7 +421,8 @@ def find_skill_context_in_cv(
             continue
 
         for bullet in _extract_bullets(section_text):
-            if skill_lower in bullet.lower():
+            bullet_skills = set(extract_skills(bullet).get("skills", []))
+            if canonical_skill in bullet_skills:
                 result["has_evidence"] = True
                 if section_name == "Experience":
                     result["in_experience_section"] = True
