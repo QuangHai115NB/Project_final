@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { cvAPI, jdAPI, matchAPI } from '../api/auth';
+import { authAPI, billingAPI, cvAPI, jdAPI, matchAPI } from '../api/auth';
 import { CVUploader, CVList } from '../components/cv';
 import { JDUploader, JDList } from '../components/jd';
 import { MatchMaker, MatchReport } from '../components/match';
@@ -285,6 +286,8 @@ export default function Dashboard() {
   const [loadingCvs, setLoadingCvs] = useState(true);
   const [loadingJds, setLoadingJds] = useState(true);
   const [loadingMatches, setLoadingMatches] = useState(true);
+  const [quota, setQuota] = useState(null);
+  const [paymentInfo, setPaymentInfo] = useState(null);
 
   const [showUploadCv, setShowUploadCv] = useState(false);
   const [showUploadJd, setShowUploadJd] = useState(false);
@@ -301,12 +304,35 @@ export default function Dashboard() {
     { id: 'reports', label: tx('nav.reports', 'Lịch sử báo cáo') },
     { id: 'profile', label: tx('nav.profile', 'Tài khoản') },
   ]), [language]);
+  if (!navItems.some((item) => item.id === 'billing')) {
+    navItems.splice(Math.max(0, navItems.length - 1), 0, { id: 'billing', label: 'Gói tài khoản' });
+  }
 
   useEffect(() => {
     fetchCvs();
     fetchJds();
     fetchMatches(0);
+    fetchQuota();
+    fetchPaymentInfo();
   }, []);
+
+  const fetchQuota = async () => {
+    try {
+      const { data } = await authAPI.getQuota();
+      setQuota(data);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Không thể tải thông tin gói tài khoản', 'error');
+    }
+  };
+
+  const fetchPaymentInfo = async () => {
+    try {
+      const { data } = await billingAPI.paymentInfo();
+      setPaymentInfo(data);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Không thể tải thông tin thanh toán', 'error');
+    }
+  };
 
   const fetchCvs = async () => {
     setLoadingCvs(true);
@@ -357,6 +383,7 @@ export default function Dashboard() {
       await cvAPI.delete(cvId);
       setCvs((prev) => prev.filter((c) => c.id !== cvId));
       fetchMatches(0);
+      fetchQuota();
       showToast(t('dashboard.cvDeleted'), 'success');
     } catch (err) {
       showToast(err.response?.data?.error || t('dashboard.deleteFailed'), 'error');
@@ -369,6 +396,7 @@ export default function Dashboard() {
       await jdAPI.delete(jdId);
       setJds((prev) => prev.filter((j) => j.id !== jdId));
       fetchMatches(0);
+      fetchQuota();
       showToast(t('dashboard.jdDeleted'), 'success');
     } catch (err) {
       showToast(err.response?.data?.error || t('dashboard.deleteFailed'), 'error');
@@ -394,6 +422,7 @@ export default function Dashboard() {
     setShowReportModal(true);
     setActivePage('reports');
     fetchMatches(0);
+    fetchQuota();
     showToast(t('dashboard.matchSuccess'), 'success');
   };
 
@@ -588,11 +617,95 @@ export default function Dashboard() {
     </>
   );
 
+  const renderBilling = () => {
+    const plan = quota?.plan || user?.effective_plan || 'free';
+    const cvLimit = quota?.limits?.cv ?? '∞';
+    const jdLimit = quota?.limits?.jd ?? '∞';
+    const matchLimit = quota?.limits?.daily_matches ?? '∞';
+    const transferContent = (months) => `CVR-${user?.id || 'USER'}-${months}M`;
+    return (
+      <>
+        <PageHeader
+          title="Gói tài khoản"
+          description="Theo dõi giới hạn sử dụng và thời hạn tài khoản trả phí."
+        />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card>
+            <p className="text-sm font-semibold text-gray-500">Gói hiện tại</p>
+            <p className="mt-2 text-3xl font-black capitalize text-gray-900">{plan}</p>
+            <p className="mt-1 text-sm text-gray-500">
+              {plan === 'premium'
+                ? `Hạn sử dụng: ${user?.premium_until ? new Date(user.premium_until).toLocaleDateString('vi-VN') : 'không giới hạn'}`
+                : 'Free: 3 CV, 3 JD, 1 lần so khớp mỗi ngày'}
+            </p>
+          </Card>
+          <Card>
+            <p className="text-sm font-semibold text-gray-500">CV / JD</p>
+            <p className="mt-2 text-3xl font-black text-gray-900">
+              {quota?.usage?.cv ?? cvs.length}/{cvLimit} · {quota?.usage?.jd ?? jds.length}/{jdLimit}
+            </p>
+            <p className="mt-1 text-sm text-gray-500">Tài liệu đã tải lên</p>
+          </Card>
+          <Card>
+            <p className="text-sm font-semibold text-gray-500">So khớp hôm nay</p>
+            <p className="mt-2 text-3xl font-black text-gray-900">
+              {quota?.usage?.matches_today ?? 0}/{matchLimit}
+            </p>
+            <p className="mt-1 text-sm text-gray-500">Giới hạn áp dụng cho gói free</p>
+          </Card>
+        </div>
+        <div className="mt-6 grid gap-4 lg:grid-cols-[320px_1fr]">
+          <Card>
+            <h3 className="font-bold text-gray-900">Mã QR thanh toán</h3>
+            {paymentInfo?.payment_qr_data_url ? (
+              <img
+                src={paymentInfo.payment_qr_data_url}
+                alt="QR thanh toán"
+                className="mt-4 aspect-square w-full rounded-lg border border-gray-200 object-contain"
+              />
+            ) : (
+              <div className="mt-4 flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-gray-300 text-center text-sm text-gray-500">
+                Admin chưa cập nhật mã QR thanh toán.
+              </div>
+            )}
+          </Card>
+          <Card>
+            <h3 className="font-bold text-gray-900">Nâng cấp tài khoản</h3>
+            <p className="mt-2 text-sm leading-6 text-gray-600">
+              Chọn gói, chuyển khoản theo đúng nội dung bên dưới, sau đó admin sẽ xác nhận và cộng ngày premium thủ công.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {(paymentInfo?.plans || [
+                { id: 'premium_1m', label: '1 tháng', months: 1, price: 20000 },
+                { id: 'premium_3m', label: '3 tháng', months: 3, price: 50000 },
+              ]).map((item) => (
+                <div key={item.id} className="rounded-lg border border-gray-200 p-4">
+                  <p className="text-sm font-semibold text-gray-500">{item.label}</p>
+                  <p className="mt-1 text-3xl font-black text-gray-900">{item.price.toLocaleString('vi-VN')}đ</p>
+                  <p className="mt-3 text-xs font-bold uppercase tracking-wide text-gray-500">Nội dung chuyển khoản</p>
+                  <p className="mt-1 rounded-lg bg-blue-50 px-3 py-2 font-mono text-sm font-bold text-blue-700">
+                    {transferContent(item.months)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {plan === 'premium' && (
+              <p className="mt-4 rounded-lg bg-green-50 p-3 text-sm font-semibold text-green-700">
+                Tài khoản của bạn đang ở gói trả phí.
+              </p>
+            )}
+          </Card>
+        </div>
+      </>
+    );
+  };
+
   const renderContent = () => {
     if (activePage === 'cvs') return renderCvs();
     if (activePage === 'jds') return renderJds();
     if (activePage === 'match') return renderMatch();
     if (activePage === 'reports') return renderReports();
+    if (activePage === 'billing') return renderBilling();
     if (activePage === 'profile') return renderProfile();
     return renderOverview();
   };
@@ -615,6 +728,11 @@ export default function Dashboard() {
                   <p className="truncate text-xs font-medium text-gray-600 dark:text-slate-300">{user.headline}</p>
                 )}
                 <p className="truncate text-xs text-gray-500 dark:text-slate-400">{user?.email}</p>
+                {user?.role === 'admin' && (
+                  <Link to="/admin" className="mt-1 block text-xs font-bold text-blue-600 dark:text-blue-300">
+                    Mở trang admin
+                  </Link>
+                )}
               </div>
             </div>
           </div>
@@ -689,11 +807,11 @@ export default function Dashboard() {
       </div>
 
       <Modal isOpen={showUploadCv} onClose={() => setShowUploadCv(false)} title={t('dashboard.addNewCv')} size="md">
-        <CVUploader onSuccess={() => { setShowUploadCv(false); fetchCvs(); showToast(t('dashboard.cvUploaded'), 'success'); }} />
+        <CVUploader onSuccess={() => { setShowUploadCv(false); fetchCvs(); fetchQuota(); showToast(t('dashboard.cvUploaded'), 'success'); }} />
       </Modal>
 
       <Modal isOpen={showUploadJd} onClose={() => setShowUploadJd(false)} title={t('dashboard.addNewJd')} size="lg">
-        <JDUploader onSuccess={() => { setShowUploadJd(false); fetchJds(); showToast(t('dashboard.jdUploaded'), 'success'); }} />
+        <JDUploader onSuccess={() => { setShowUploadJd(false); fetchJds(); fetchQuota(); showToast(t('dashboard.jdUploaded'), 'success'); }} />
       </Modal>
 
       <Modal

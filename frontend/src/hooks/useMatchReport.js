@@ -3,6 +3,7 @@ import { matchAPI } from '../api/auth';
 
 export function useMatchReport() {
   const [report, setReport] = useState(null);
+  const [matchDetail, setMatchDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -11,6 +12,7 @@ export function useMatchReport() {
     setError(null);
     try {
       const { data } = await matchAPI.get(matchId);
+      setMatchDetail(data);
       setReport(data.report ?? data);
       return data;
     } catch (err) {
@@ -20,6 +22,12 @@ export function useMatchReport() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const saveReview = async (matchId, userReview) => {
+    const { data } = await matchAPI.updateReview(matchId, userReview);
+    setMatchDetail((prev) => prev ? { ...prev, user_review: data.user_review } : prev);
+    return data;
   };
 
   const downloadDocx = async (matchId, filename = 'report.docx') => {
@@ -34,5 +42,5 @@ export function useMatchReport() {
     URL.revokeObjectURL(url);
   };
 
-  return { report, loading, error, fetchReport, downloadDocx };
+  return { report, matchDetail, loading, error, fetchReport, saveReview, downloadDocx };
 }

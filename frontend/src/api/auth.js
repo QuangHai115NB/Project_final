@@ -100,6 +100,8 @@ export const authAPI = {
 
   getMe: () => api.get('/auth/me'),
 
+  getQuota: () => api.get('/auth/quota'),
+
   updateProfile: (payload) => api.put('/auth/profile', payload),
 
   uploadAvatar: (file) => {
@@ -183,11 +185,41 @@ export const matchAPI = {
   create: (cvId, jdId) =>
     api.post('/matches', { cv_id: cvId, jd_id: jdId }),
 
+  updateReview: (matchId, userReview) =>
+    api.put(`/matches/${matchId}/review`, { user_review: userReview }),
+
   download: (matchId) => {
     return api.get(`/matches/download/${matchId}`, {
       responseType: 'blob',
     });
   },
+};
+
+export const adminAPI = {
+  overview: () => api.get('/admin/overview'),
+  listUsers: (limit = 20, offset = 0, search = '') =>
+    api.get(`/admin/users?limit=${limit}&offset=${offset}&search=${encodeURIComponent(search)}`),
+  getUser: (userId) => api.get(`/admin/users/${userId}`),
+  updateUser: (userId, payload) => api.put(`/admin/users/${userId}`, payload),
+  listMatches: (limit = 20, offset = 0, userId = '') => {
+    const params = new URLSearchParams({ limit, offset });
+    if (userId) params.set('user_id', userId);
+    return api.get(`/admin/matches?${params.toString()}`);
+  },
+  getMatch: (matchId) => api.get(`/admin/matches/${matchId}`),
+  getPaymentInfo: () => api.get('/admin/payment-info'),
+  uploadPaymentQr: (file) => {
+    const formData = new FormData();
+    formData.append('qr_image', file);
+    return api.post('/admin/payment-qr', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  deletePaymentQr: () => api.delete('/admin/payment-qr'),
+};
+
+export const billingAPI = {
+  paymentInfo: () => api.get('/billing/payment-info'),
 };
 
 export default api;

@@ -510,15 +510,30 @@ function UnmatchedJdRequirements({ items = [], t }) {
 }
 
 export default function MatchReport({ matchId, compact = false }) {
-  const { report, loading, error, fetchReport, downloadDocx } = useMatchReport();
+  const { report, matchDetail, loading, error, fetchReport, saveReview, downloadDocx } = useMatchReport();
   const { language, t } = useLanguage();
   const [showGuide, setShowGuide] = useState(false);
+  const [reviewText, setReviewText] = useState('');
+  const [savingReview, setSavingReview] = useState(false);
+  const [reviewSaved, setReviewSaved] = useState(false);
 
   useEffect(() => {
     if (matchId) {
-      fetchReport(matchId);
+      fetchReport(matchId).then((data) => setReviewText(data.user_review || ''));
     }
   }, [matchId]);
+
+  const handleSaveReview = async () => {
+    setSavingReview(true);
+    setReviewSaved(false);
+    try {
+      const data = await saveReview(matchId, reviewText);
+      setReviewText(data.user_review || '');
+      setReviewSaved(true);
+    } finally {
+      setSavingReview(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -578,6 +593,32 @@ export default function MatchReport({ matchId, compact = false }) {
 
   return (
     <div className="space-y-6">
+      <Card className="space-y-3 border-l-4 border-l-blue-600">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-bold text-gray-900 dark:text-white">Đánh giá của bạn</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400">Có thể ghi chú cảm nhận sau khi xem kết quả, hoặc bỏ trống.</p>
+          </div>
+          {reviewSaved && <span className="text-sm font-semibold text-green-600">Đã lưu</span>}
+        </div>
+        <textarea
+          value={reviewText}
+          onChange={(event) => {
+            setReviewText(event.target.value);
+            setReviewSaved(false);
+          }}
+          rows={4}
+          maxLength={2000}
+          className="w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+        />
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-gray-500">{reviewText.length}/2000</span>
+          <Button size="sm" onClick={handleSaveReview} loading={savingReview}>
+            Lưu đánh giá
+          </Button>
+        </div>
+      </Card>
+
       <div className={`rounded-lg border ${scoreTone.border} ${scoreTone.bg} p-6 dark:border-slate-700 dark:bg-slate-900/80`}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>

@@ -2,6 +2,7 @@
 REQUIRED_CV_SECTIONS = ["Summary", "Skills", "Experience"]
 RECOMMENDED_CV_SECTIONS = ["Projects", "Certifications"]
 
+# Tu dien tu
 SECTION_HEADERS = {
     "Summary": [
         "summary", "profile", "objective", "professional summary",
@@ -32,6 +33,7 @@ SECTION_HEADERS = {
     ],
 }
 
+#Tu sao rong, chung chung
 GENERIC_PHRASES = [
     "hard-working",
     "team player",
@@ -45,6 +47,7 @@ GENERIC_PHRASES = [
     "detail-oriented"
 ]
 
+#Cac cum tu bat dau cau yeu
 WEAK_BULLET_PATTERNS = [
     "responsible for",
     "worked on",
@@ -54,6 +57,7 @@ WEAK_BULLET_PATTERNS = [
     "assisted with"
 ]
 
+# Dong tu manh
 ACTION_VERBS = [
     "built", "developed", "implemented", "designed", "created", "optimized",
     "improved", "delivered", "deployed", "integrated", "automated", "migrated",
@@ -61,22 +65,26 @@ ACTION_VERBS = [
     "debugged", "reduced", "increased", "accelerated", "launched"
 ]
 
+#Dau hieu do luong
 METRIC_HINTS = [
     "%", "percent", "ms", "s", "sec", "seconds", "minutes", "hours",
     "users", "clients", "requests", "transactions", "records",
     "services", "apis", "endpoints", "modules", "projects"
 ]
 
+#Yeu cau bat buoc
 JD_REQUIRED_MARKERS = [
     "must", "required", "requirements", "you have", "need to",
     "we are looking for", "mandatory", "minimum qualifications"
 ]
 
+#Yeu cau diem cong
 JD_PREFERRED_MARKERS = [
     "preferred", "nice to have", "bonus", "plus", "good to have",
     "preferred qualifications"
 ]
 
+#Danh sach den cac tu
 KEYWORD_BLACKLIST = {
     "experience", "skills", "education", "job", "work", "candidate",
     "team", "company", "role", "position", "requirement", "requirements",
@@ -86,18 +94,17 @@ KEYWORD_BLACKLIST = {
     "insurance", "health insurance", "social insurance", "paid leave",
     "annual leave", "vacation", "remote", "hybrid", "onsite", "office",
     "location", "address", "working hours", "working time", "full time",
-    "part time", "interview", "recruitment", "apply", "application",
-    "lương", "thu nhập", "phúc lợi", "thưởng", "bảo hiểm", "nghỉ phép",
-    "địa điểm", "văn phòng", "thời gian làm việc", "ứng tuyển", "phỏng vấn"
+    "part time", "interview", "recruitment", "apply", "application"
 }
 
+# Sử dụng Biểu thức chính quy (Regex) để bắt và loại bỏ mạnh tay hơn các đoạn văn bản chứa thông tin về lương thưởng,
+# loại hình làm việc
 KEYWORD_EXCLUDED_PATTERNS = [
     r"\b(salary|compensation|benefits?|bonus|allowance|insurance|paid leave|annual leave|vacation)\b",
     r"\b(remote|hybrid|onsite|office|location|address|working hours|working time|full time|part time)\b",
     r"\b(interview|recruitment|apply|application|probation|contract)\b",
-    r"\b(lương|thu nhập|phúc lợi|thưởng|bảo hiểm|nghỉ phép|địa điểm|văn phòng|thời gian làm việc|ứng tuyển|phỏng vấn)\b",
     r"[$€£¥₫]\s*\d+",
-    r"\b\d+\s*(usd|vnd|eur|gbp|triệu|tr|million|month|year|tháng|năm)\b",
+    r"\b\d+\s*(usd|vnd|eur|gbp|tr|million|month|year)\b",
 ]
 
 SCORE_WEIGHTS = {

@@ -30,12 +30,25 @@ def require_auth(func):
                 raise AuthenticationError("User không tồn tại")
             if not user.is_verified:
                 raise PermissionDeniedError("Tài khoản chưa xác thực email")
+            if not user.is_active:
+                raise PermissionDeniedError("Tài khoản đã bị khóa")
 
             g.current_user = user
             g.user_id = user_id
         finally:
             db.close()
 
+        return func(*args, **kwargs)
+
+    return decorated
+
+
+def require_admin(func):
+    @wraps(func)
+    @require_auth
+    def decorated(*args, **kwargs):
+        if getattr(g.current_user, "role", "user") != "admin":
+            raise PermissionDeniedError("Bạn không có quyền quản trị")
         return func(*args, **kwargs)
 
     return decorated

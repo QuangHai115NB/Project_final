@@ -13,6 +13,7 @@ from src.services.storage import (
     upload_cv as storage_upload_cv,
 )
 from src.services.text_preprocess import clean_text
+from src.services.quota_service import ensure_can_upload_cv
 
 
 def _remove_null_bytes(text: str) -> str:
@@ -35,9 +36,11 @@ def create_cv_record(*, user_id: int, title: str, file_storage) -> dict:
 
     db = SessionLocal()
     try:
-        if not UserRepository(db).exists(user_id):
+        user = UserRepository(db).get_by_id(user_id)
+        if not user:
             raise NotFoundError("User không tồn tại")
 
+        ensure_can_upload_cv(db, user)
         _, storage_path, raw_text = storage_upload_cv(file_storage, user_id)
         cleaned_text = _remove_null_bytes(clean_text(raw_text))
         safe_filename = secure_filename(file_storage.filename)

@@ -19,8 +19,12 @@ def create_app():
 
     from src.api.document_routes import doc_bp
     from src.api.auth_routes import auth_bp
+    from src.api.admin_routes import admin_bp
+    from src.api.billing_routes import billing_bp
 
     app.register_blueprint(auth_bp)  # /api/auth/*
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(billing_bp)
     app.register_blueprint(doc_bp)
 
     @app.errorhandler(AppError)

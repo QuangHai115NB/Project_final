@@ -4,6 +4,7 @@ from src.core.errors import NotFoundError, ValidationError
 from src.db.database import SessionLocal
 from src.db.repository import UserRepository
 from src.services.storage import BUCKET_AVATAR, create_public_url, delete_avatar, upload_avatar
+from src.services.quota_service import effective_plan
 
 
 def _clean_optional(value: str | None, *, max_length: int | None = None) -> str | None:
@@ -23,6 +24,11 @@ def serialize_user_profile(user) -> dict:
         "id": user.id,
         "email": user.email,
         "is_verified": user.is_verified,
+        "role": user.role,
+        "plan": user.plan,
+        "effective_plan": effective_plan(user),
+        "premium_until": user.premium_until.isoformat() if user.premium_until else None,
+        "is_active": user.is_active,
         "full_name": user.full_name,
         "phone": user.phone,
         "headline": user.headline,

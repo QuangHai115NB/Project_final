@@ -15,6 +15,10 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     is_verified = Column(Boolean, nullable=False, default=False)
+    role = Column(String(20), nullable=False, default="user")
+    plan = Column(String(20), nullable=False, default="free")
+    premium_until = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
     full_name = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
     headline = Column(String(255), nullable=True)
@@ -82,8 +86,17 @@ class MatchHistory(Base):
     jd_id = Column(Integer, ForeignKey("jd_documents.id"), nullable=False)
     similarity_score = Column(Float, nullable=True)
     report_json = Column(Text, nullable=False)
+    user_review = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="matches")
     cv = relationship("CVDocument", back_populates="matches")
     jd = relationship("JDDocument", back_populates="matches")
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

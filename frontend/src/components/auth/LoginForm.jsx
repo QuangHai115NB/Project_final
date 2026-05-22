@@ -49,10 +49,9 @@ export default function LoginForm() {
           )}
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-200">Email</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-200">Email hoặc tài khoản</label>
             <input
-              type="email"
-              placeholder="your@email.com"
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -65,7 +64,6 @@ export default function LoginForm() {
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
-                placeholder="********"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

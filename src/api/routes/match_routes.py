@@ -12,6 +12,7 @@ from src.services.documents import (
     download_match_report,
     get_match_detail,
     list_match_reports,
+    update_match_review,
 )
 
 match_bp = Blueprint("match_routes", __name__)
@@ -44,6 +45,17 @@ def list_matches():
 @require_auth
 def get_match(match_id: int):
     return response(get_match_detail(user_id=g.user_id, match_id=match_id))
+
+
+@match_bp.put("/matches/<int:match_id>/review")
+@require_auth
+def update_review(match_id: int):
+    body = request.get_json(silent=True) or {}
+    return response(update_match_review(
+        user_id=g.user_id,
+        match_id=match_id,
+        user_review=body.get("user_review", ""),
+    ))
 
 
 @match_bp.delete("/matches/<int:match_id>")

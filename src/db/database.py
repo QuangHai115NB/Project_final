@@ -30,6 +30,53 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
 
+def _ensure_sqlite_user_columns() -> None:
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    columns = {
+        "role": "VARCHAR(20) NOT NULL DEFAULT 'user'",
+        "plan": "VARCHAR(20) NOT NULL DEFAULT 'free'",
+        "premium_until": "DATETIME",
+        "is_active": "BOOLEAN NOT NULL DEFAULT 1",
+    }
+    with engine.begin() as connection:
+        existing = {
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(users)")).fetchall()
+        }
+        for name, ddl in columns.items():
+            if name not in existing:
+                connection.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_sqlite_match_columns() -> None:
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    columns = {
+        "user_review": "TEXT",
+    }
+    with engine.begin() as connection:
+        existing = {
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(match_history)")).fetchall()
+        }
+        for name, ddl in columns.items():
+            if name not in existing:
+                connection.execute(text(f"ALTER TABLE match_history ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_sqlite_app_settings() -> None:
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS app_settings ("
+            "key VARCHAR(100) PRIMARY KEY, "
+            "value TEXT, "
+            "updated_at DATETIME)"
+        ))
+
+
 def init_db():
     """
     Verify connectivity, then create tables for local/dev environments.
@@ -49,3 +96,9 @@ def init_db():
         raise
 
     Base.metadata.create_all(bind=engine)
+    _ensure_sqlite_user_columns()
+    _ensure_sqlite_match_columns()
+    _ensure_sqlite_app_settings()
+
+    from src.services.admin_service import seed_admin_from_env
+    seed_admin_from_env(os.getenv("ADMIN_EMAIL"), os.getenv("ADMIN_PASSWORD"))

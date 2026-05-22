@@ -17,6 +17,9 @@ from src.services.auth.auth_service import (
     update_profile,
     verify_email_otp,
 )
+from src.db.database import SessionLocal
+from src.db.repository import UserRepository
+from src.services.quota_service import usage_payload
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -74,6 +77,17 @@ def change_pwd():
 @require_auth
 def me():
     return response(serialize_user_profile(g.current_user))
+
+
+@auth_bp.get("/quota")
+@require_auth
+def quota():
+    db = SessionLocal()
+    try:
+        user = UserRepository(db).get_by_id(g.user_id)
+        return response(usage_payload(db, user))
+    finally:
+        db.close()
 
 
 @auth_bp.put("/profile")

@@ -6,12 +6,13 @@ from werkzeug.utils import secure_filename
 
 from src.core.errors import NotFoundError, ValidationError
 from src.db.database import SessionLocal
-from src.db.repository import CVRepository, JDRepository, MatchRepository
+from src.db.repository import CVRepository, JDRepository, MatchRepository, UserRepository
 from src.services.jd_matcher import match_cv_to_jd
 from src.services.report_builder import build_match_report
 from src.services.report_docx_generator import generate_match_report_docx
 from src.services.rule_checker import run_rule_checks
 from src.services.section_parser import parse_sections
+from src.services.quota_service import ensure_can_create_match
 
 
 def _pagination(limit: int = 10, offset: int = 0, max_limit: int = 50) -> tuple[int, int]:
@@ -29,6 +30,10 @@ def create_match_report(*, user_id: int, cv_id: int, jd_id: int) -> dict:
         cv_repo = CVRepository(db)
         jd_repo = JDRepository(db)
         match_repo = MatchRepository(db)
+        user = UserRepository(db).get_by_id(user_id)
+        if not user:
+            raise NotFoundError("User không tồn tại")
+        ensure_can_create_match(db, user)
 
         cv_record = cv_repo.get_for_user(cv_id, user_id)
         jd_record = jd_repo.get_for_user(jd_id, user_id)
@@ -120,8 +125,30 @@ def get_match_detail(*, user_id: int, match_id: int) -> dict:
             "cv_id": record.cv_id,
             "jd_id": record.jd_id,
             "similarity_score": float(record.similarity_score) if record.similarity_score else 0,
+            "user_review": record.user_review or "",
             "created_at": record.created_at.isoformat() if record.created_at else None,
             "report": report_json,
+        }
+    finally:
+        db.close()
+
+
+def update_match_review(*, user_id: int, match_id: int, user_review: str | None) -> dict:
+    cleaned = (user_review or "").strip()
+    if len(cleaned) > 2000:
+        raise ValidationError("Review không được vượt quá 2000 ký tự")
+
+    db = SessionLocal()
+    try:
+        repo = MatchRepository(db)
+        record = repo.get_for_user(match_id, user_id)
+        if not record:
+            raise NotFoundError("Match not found")
+        record = repo.update_user_review(record, cleaned or None)
+        return {
+            "message": "Đã lưu đánh giá",
+            "match_id": record.id,
+            "user_review": record.user_review or "",
         }
     finally:
         db.close()

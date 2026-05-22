@@ -48,10 +48,22 @@ def reset_db():
     Base.metadata.create_all(bind=engine)
 
 
-def create_verified_user(email: str = "api@example.com", password: str = "Password123") -> User:
+def create_verified_user(
+    email: str = "api@example.com",
+    password: str = "Password123",
+    *,
+    role: str = "user",
+    plan: str = "free",
+) -> User:
     db = SessionLocal()
     try:
-        user = User(email=email, password_hash=hash_password(password), is_verified=True)
+        user = User(
+            email=email,
+            password_hash=hash_password(password),
+            is_verified=True,
+            role=role,
+            plan=plan,
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -231,6 +243,63 @@ def test_cv_upload_route_with_mock_storage():
         cv_service.storage_upload_cv = original_upload_cv
 
 
+def test_free_plan_blocks_fourth_cv_upload():
+    reset_db()
+    user = create_verified_user()
+    token = issue_access_token()
+
+    original_upload_cv = cv_service.storage_upload_cv
+    cv_service.storage_upload_cv = lambda file_storage, user_id: (
+        "https://storage.example/cv.pdf",
+        f"user_{user_id}/{file_storage.filename}",
+        "SUMMARY\nPython backend engineer\nSKILLS\nPython, Flask",
+    )
+    try:
+        for index in range(3):
+            response = client.post(
+                "/api/cvs/upload",
+                data={"cv_pdf": (BytesIO(b"%PDF-1.4 fake"), f"candidate-{index}.pdf")},
+                headers={"Authorization": f"Bearer {token}"},
+                content_type="multipart/form-data",
+            )
+            assert response.status_code == 201, response.get_json()
+
+        blocked = client.post(
+            "/api/cvs/upload",
+            data={"cv_pdf": (BytesIO(b"%PDF-1.4 fake"), "candidate-4.pdf")},
+            headers={"Authorization": f"Bearer {token}"},
+            content_type="multipart/form-data",
+        )
+        assert blocked.status_code == 403, blocked.get_json()
+        assert "Gói free" in blocked.get_json()["error"]
+
+        db = SessionLocal()
+        try:
+            assert db.query(CVDocument).filter(CVDocument.user_id == user.id).count() == 3
+        finally:
+            db.close()
+    finally:
+        cv_service.storage_upload_cv = original_upload_cv
+
+
+def test_admin_overview_requires_admin_and_returns_counts():
+    reset_db()
+    create_verified_user(email="user@example.com")
+    create_verified_user(email="admin@example.com", role="admin", plan="premium")
+    user_token = issue_access_token(email="user@example.com")
+    admin_token = issue_access_token(email="admin@example.com")
+
+    denied = client.get("/api/admin/overview", headers={"Authorization": f"Bearer {user_token}"})
+    assert denied.status_code == 403, denied.get_json()
+
+    response = client.get("/api/admin/overview", headers={"Authorization": f"Bearer {admin_token}"})
+    payload = response.get_json()
+    assert response.status_code == 200, payload
+    assert payload["users"] == 2
+    assert payload["admins"] == 1
+    assert payload["premium_users"] == 1
+
+
 def test_jd_upload_and_match_flow():
     reset_db()
     user = create_verified_user()
@@ -346,6 +415,8 @@ if __name__ == "__main__":
         ("Avatar upload and delete routes work", test_avatar_upload_and_delete_routes),
         ("Match route validation is preserved", test_match_route_validation_is_preserved),
         ("CV upload route works with mock storage", test_cv_upload_route_with_mock_storage),
+        ("Free plan blocks fourth CV upload", test_free_plan_blocks_fourth_cv_upload),
+        ("Admin overview requires admin and returns counts", test_admin_overview_requires_admin_and_returns_counts),
         ("JD upload and match flow works with mock storage", test_jd_upload_and_match_flow),
         ("CV file content route streams PDF blob", test_cv_file_content_route_streams_pdf_blob),
         ("JD file content route streams text blob", test_jd_file_content_route_streams_text_blob),

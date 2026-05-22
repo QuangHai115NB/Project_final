@@ -18,6 +18,7 @@ from src.services.documents.match_service import (
     download_match_report,
     get_match_detail,
     list_match_reports,
+    update_match_review,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "download_match_report",
     "get_match_detail",
     "list_match_reports",
+    "update_match_review",
 ]

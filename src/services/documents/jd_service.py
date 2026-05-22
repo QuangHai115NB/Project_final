@@ -12,6 +12,7 @@ from src.services.storage import (
     delete_jd as storage_delete_jd,
     upload_jd as storage_upload_jd,
 )
+from src.services.quota_service import ensure_can_upload_jd
 
 
 def _remove_null_bytes(text: str) -> str:
@@ -31,9 +32,11 @@ def _serialize_jd(record) -> dict:
 def create_jd_record(*, user_id: int, title: str, jd_text: str, file_storage=None) -> dict:
     db = SessionLocal()
     try:
-        if not UserRepository(db).exists(user_id):
+        user = UserRepository(db).get_by_id(user_id)
+        if not user:
             raise NotFoundError("User không tồn tại")
 
+        ensure_can_upload_jd(db, user)
         storage_path = ""
         filename = "manual_jd.txt"
         final_text = (jd_text or "").strip()

@@ -29,6 +29,7 @@ try:
 except ImportError:
     SEMANTIC_AVAILABLE = False
 
+#Neu co module sematic matcher thi dung khong thi fallback ve TF-IDF
 # Import suggestion engine
 try:
     from src.services.suggestion_engine import generate_bulk_suggestions
@@ -39,20 +40,20 @@ except ImportError:
 
 
 # ─── Utility helpers ────────────────────────────────────────────────
-
+# Tranh loi chia cho 0
 def _safe_ratio(numerator: int, denominator: int) -> float:
     if denominator <= 0:
         return 1.0
     return numerator / denominator
 
-
+#Tim so exp lon nhat roi lay no ra
 def _extract_years_of_experience(text: str) -> int:
     values = re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", text.lower())
     if not values:
         return 0
     return max(int(v) for v in values)
 
-
+#Du doan level của CV/JD
 def _detect_seniority(text: str) -> str:
     lowered = text.lower()
     if re.search(r"\b(lead|principal|architect|staff)\b", lowered):
@@ -67,12 +68,12 @@ def _detect_seniority(text: str) -> str:
         return "intern"
     return "unknown"
 
-
+#Kiem tra xem co tu khoa "uu tien" trong JD không
 def _is_preferred_line(line: str) -> bool:
     lowered = line.lower()
     return any(marker in lowered for marker in JD_PREFERRED_MARKERS)
 
-
+#Xac định dòng đó thuộc phần nào JD
 def _detect_jd_skill_section(line: str) -> str | None:
     normalized = re.sub(r"[^a-z\s/&-]", " ", (line or "").lower())
     normalized = re.sub(r"\s+", " ", normalized).strip(" :-")
@@ -120,7 +121,7 @@ def _detect_jd_skill_section(line: str) -> str | None:
             return section_name
     return None
 
-
+#Loai bo nhung tu khoa vo nghĩa khi lưu vào danh sách Skill
 def _is_excluded_keyword(term: str) -> bool:
     lowered = term.strip().lower()
     if not lowered or lowered in KEYWORD_BLACKLIST or lowered.isdigit():
@@ -129,7 +130,7 @@ def _is_excluded_keyword(term: str) -> bool:
 
 
 # ─── Layer 1: Skill Matching ─────────────────────────────────────────
-
+#Tách Skill làm 3 nhóm required, preferred, contextual
 def _extract_jd_skills(jd_text: str) -> Dict[str, List[str]]:
     """
     Tách skills từ JD thành required vs preferred.

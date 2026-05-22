@@ -83,6 +83,9 @@ def login_user(email: str, password: str) -> dict:
         if not user.is_verified:
             raise ValidationError("Tài khoản chưa xác thực email. Vui lòng kiểm tra hộp thư.")
 
+        if not user.is_active:
+            raise AuthenticationError("Tài khoản đã bị khóa")
+
         reset_login_failures(email)
         return {"message": "Đăng nhập thành công", **issue_token_pair(user)}
     finally:
