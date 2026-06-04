@@ -302,8 +302,14 @@ function EvidenceItem({ item, language, t }) {
   );
 }
 
-function PillList({ items = [], colorClass = 'bg-gray-100 text-gray-700', t, formatItem }) {
-  if (!items.length) return <p className="text-sm text-gray-500 dark:text-slate-400">{t('common.noData')}</p>;
+function PillList({ items = [], colorClass = 'bg-gray-100 text-gray-700', t, formatItem, emptyText, emptyClassName = '' }) {
+  if (!items.length) {
+    return (
+      <p className={`text-sm text-gray-500 dark:text-slate-400 ${emptyClassName}`}>
+        {emptyText || t('common.noData')}
+      </p>
+    );
+  }
   return (
     <div className="flex flex-wrap gap-2">
       {items.map((item, index) => (
@@ -509,8 +515,134 @@ function UnmatchedJdRequirements({ items = [], t }) {
   );
 }
 
+function buildAnnotationMap(annotations = []) {
+  return annotations.reduce((acc, annotation) => {
+    acc[annotation.id] = annotation;
+    return acc;
+  }, {});
+}
+
+function annotationClasses(tone, active) {
+  const base = active ? 'ring-2 ring-blue-500' : '';
+  const tones = {
+    red: 'border-red-300 bg-red-50 dark:border-rose-700/70 dark:bg-rose-950/35',
+    amber: 'border-amber-300 bg-amber-50 dark:border-amber-700/70 dark:bg-amber-950/35',
+    blue: 'border-blue-300 bg-blue-50 dark:border-sky-700/70 dark:bg-sky-950/35',
+    green: 'border-green-300 bg-green-50 dark:border-emerald-700/70 dark:bg-emerald-950/35',
+  };
+  return `${base} ${tones[tone] || 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900'}`;
+}
+
+function AnnotatedCvPanel({ structuredCv = {}, activeAnnotation, onSelectAnnotation, language }) {
+  const sections = structuredCv.sections || [];
+  const annotations = structuredCv.annotations || [];
+  const annotationMap = buildAnnotationMap(annotations);
+  const looseAnnotations = annotations.filter((annotation) => !annotation.item_id);
+
+  if (!sections.length) return null;
+
+  const labels = language === 'vi'
+    ? {
+      title: 'CV đã tách theo phần',
+      subtitle: 'Các dòng được tô màu là nơi hệ thống gợi ý cần sửa.',
+      markers: 'Gợi ý chưa gắn vào dòng cụ thể',
+      noIssue: 'Chưa có lỗi gắn với dòng này',
+    }
+    : {
+      title: 'Structured CV',
+      subtitle: 'Highlighted lines are tied to recommendations from the report.',
+      markers: 'Suggestions without an exact line',
+      noIssue: 'No linked issue',
+    };
+
+  return (
+    <Card className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-bold text-gray-900 dark:text-white">{labels.title}</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">{labels.subtitle}</p>
+        </div>
+        <div className="flex shrink-0 gap-2 text-xs">
+          <span className="rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-200">High</span>
+          <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">Medium</span>
+          <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200">Low</span>
+        </div>
+      </div>
+
+      <div className="max-h-[780px] overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+        <div className="mx-auto max-w-3xl space-y-5 bg-white p-6 shadow-sm dark:bg-slate-900">
+          {sections.map((section) => (
+            <section key={section.name} className="space-y-2">
+              <h4 className="border-b border-gray-200 pb-1 text-sm font-bold uppercase tracking-wide text-gray-800 dark:border-slate-700 dark:text-slate-100">
+                {normalizeEnglishSectionLabel(section.name)}
+              </h4>
+              <div className="space-y-2">
+                {(section.items || []).map((item) => {
+                  const itemAnnotations = (item.annotations || [])
+                    .map((id) => annotationMap[id])
+                    .filter(Boolean);
+                  const primary = itemAnnotations[0];
+                  const active = itemAnnotations.some((annotation) => annotation.id === activeAnnotation);
+                  const isBullet = item.type === 'bullet';
+
+                  return (
+                    <button
+                      type="button"
+                      key={item.id}
+                      onClick={() => primary && onSelectAnnotation(primary.id)}
+                      className={`w-full rounded border p-3 text-left transition ${annotationClasses(primary?.tone, active)}`}
+                    >
+                      <div className="flex gap-2">
+                        {isBullet && <span className="mt-0.5 text-gray-400">-</span>}
+                        <p className="min-w-0 flex-1 text-sm leading-6 text-gray-900 dark:text-slate-100">{item.text}</p>
+                      </div>
+                      {itemAnnotations.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {itemAnnotations.slice(0, 3).map((annotation) => (
+                            <span
+                              key={annotation.id}
+                              className="rounded bg-white px-2 py-1 text-xs font-semibold text-gray-700 shadow-sm dark:bg-slate-950 dark:text-slate-200"
+                            >
+                              {annotation.issue_code.replaceAll('_', ' ')}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="sr-only">{labels.noIssue}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      </div>
+
+      {looseAnnotations.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">{labels.markers}</p>
+          <div className="grid gap-2">
+            {looseAnnotations.slice(0, 8).map((annotation) => (
+              <button
+                type="button"
+                key={annotation.id}
+                onClick={() => onSelectAnnotation(annotation.id)}
+                className={`rounded border p-3 text-left text-sm ${annotationClasses(annotation.tone, annotation.id === activeAnnotation)}`}
+              >
+                <span className="font-semibold">{annotation.issue_code.replaceAll('_', ' ')}</span>
+                <span className="ml-2 text-gray-500 dark:text-slate-400">{annotation.section}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function MatchReport({ matchId, compact = false }) {
-  const { report, matchDetail, loading, error, fetchReport, saveReview, downloadDocx } = useMatchReport();
+  const { report, matchDetail, loading, error, fetchReport, saveReview, downloadPdf } = useMatchReport();
   const { language, t } = useLanguage();
   const [showGuide, setShowGuide] = useState(false);
   const [reviewText, setReviewText] = useState('');
@@ -671,7 +803,13 @@ export default function MatchReport({ matchId, compact = false }) {
               <p className="mb-2 text-sm font-bold">
                 {t('report.missingRequired', { count: skillsSummary.missing_required?.length || 0 })}
               </p>
-              <PillList items={skillsSummary.missing_required || []} colorClass="bg-white text-red-700 border border-red-200 dark:bg-rose-950/50 dark:text-rose-100 dark:border-rose-700/50" t={t} />
+              <PillList
+                items={skillsSummary.missing_required || []}
+                colorClass="bg-white text-red-700 border border-red-200 dark:bg-rose-950/50 dark:text-rose-100 dark:border-rose-700/50"
+                t={t}
+                emptyText={language === 'vi' ? 'Không có kỹ năng bắt buộc còn thiếu.' : 'No missing required skills.'}
+                emptyClassName="font-medium text-green-700 dark:text-emerald-300"
+              />
             </div>
           </div>
         </Card>
@@ -703,8 +841,6 @@ export default function MatchReport({ matchId, compact = false }) {
         </Card>
       )}
 
-      <UnmatchedJdRequirements items={semanticAnalysis?.unmatched_jd_lines || []} t={t} />
-
       {visibleIssues.length > 0 && (
         <div className="space-y-3">
           <h3 className="font-bold text-gray-900 dark:text-white">{t('report.issues', { count: visibleIssues.length })}</h3>
@@ -716,12 +852,18 @@ export default function MatchReport({ matchId, compact = false }) {
 
       <RewriteExamples examples={rewriteExamples} language={language} t={t} />
 
+      <Card className="ui-soft-blue text-sm leading-6">
+        {language === 'vi'
+          ? 'Nếu bạn muốn xem chi tiết hãy tải báo cáo về.'
+          : 'Download the report to view the detailed annotated CV and rewrite guidance.'}
+      </Card>
+
       <Button
         variant="outline"
         className="w-full bg-white dark:bg-slate-950"
-        onClick={() => downloadDocx(matchId, `report_${matchId}.docx`)}
+        onClick={() => downloadPdf(matchId, `report_${matchId}.pdf`)}
       >
-        {t('common.downloadWord')}
+        {language === 'vi' ? '!! Download !!' : 'Download PDF report'}
       </Button>
 
       <ScoringGuide isOpen={showGuide} onClose={() => setShowGuide(false)} t={t} />

@@ -394,6 +394,7 @@ def test_report_contains_versioned_scoring_snapshot():
     from src.services.rule_checker import run_rule_checks
     from src.services.section_parser import parse_sections
     from src.services.jd_matcher import match_cv_to_jd
+    from src.services.scoring import calibrate_score
 
     parsed = parse_sections(SAMPLE_CV_STRONG)
     rule_report = run_rule_checks(SAMPLE_CV_STRONG, parsed)
@@ -427,7 +428,8 @@ def test_report_contains_versioned_scoring_snapshot():
         ),
         2,
     )
-    assert recomputed == round(float(report["summary"]["final_score"]), 2)
+    assert recomputed == round(float(report["scoring"]["raw_final_score"]), 2)
+    assert calibrate_score(recomputed) == round(float(report["summary"]["final_score"]), 2)
 
 
 # ─── Run all tests ────────────────────────────────────────────────────

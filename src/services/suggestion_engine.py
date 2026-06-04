@@ -243,7 +243,7 @@ def generate_bulk_suggestions(
         errors: List[Dict],
         cv_sections: Dict[str, str],
         jd_text: str,
-        max_api_calls: int = 3,
+        max_api_calls: int = 5,
 ) -> List[Dict]:
     """
     Main function — nhận list errors từ matching engine,
@@ -300,6 +300,21 @@ def generate_bulk_suggestions(
                     optional_rewrite = rewritten
                     api_calls_used += 1
 
+            elif code == "missing_metrics" and details:
+                first_detail = details[0]
+                if isinstance(first_detail, dict):
+                    bullet = first_detail.get("excerpt", "")
+                else:
+                    bullet = str(first_detail)
+                rewritten = rewrite_weak_bullet(
+                    bullet=bullet,
+                    missing_skills=_extract_missing_from_errors(sorted_errors),
+                    jd_context=jd_text[:300],
+                )
+                if rewritten:
+                    optional_rewrite = rewritten
+                    api_calls_used += 1
+
             elif code == "missing_required_skills" and details:
                 skill = details[0]
                 suggestion = suggest_missing_skill_addition(
@@ -310,6 +325,24 @@ def generate_bulk_suggestions(
                 if suggestion:
                     optional_rewrite = suggestion
                     api_calls_used += 1
+
+            elif code == "weak_experience_alignment":
+                experience_text = cv_sections.get("Experience", "") or cv_sections.get("Projects", "")
+                first_bullet = ""
+                for line in experience_text.splitlines():
+                    cleaned = line.strip(" \t-*")
+                    if len(cleaned.split()) >= 4:
+                        first_bullet = cleaned
+                        break
+                if first_bullet:
+                    rewritten = rewrite_weak_bullet(
+                        bullet=first_bullet,
+                        missing_skills=_extract_missing_from_errors(sorted_errors),
+                        jd_context=jd_text[:400],
+                    )
+                    if rewritten:
+                        optional_rewrite = rewritten
+                        api_calls_used += 1
 
             elif code == "weak_summary" and cv_sections.get("Summary"):
                 missing = _extract_missing_from_errors(sorted_errors)

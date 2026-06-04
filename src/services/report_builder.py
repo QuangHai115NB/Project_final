@@ -19,6 +19,7 @@ from src.services.scoring import (
     FINAL_SCORE_COMPONENT_WEIGHTS,
     compute_scorecard,
 )
+from src.services.cv_annotation_builder import build_annotated_cv
 
 
 def _score_label(score: float) -> str:
@@ -221,6 +222,7 @@ def build_match_report(
         semantic_detail.get("unmatched_jd_lines", []),
         limit=3,
     )
+    structured_cv = build_annotated_cv(cv_text, parsed_sections, all_issues)
 
     return {
         "report_schema_version": REPORT_SCHEMA_VERSION,
@@ -253,11 +255,13 @@ def build_match_report(
         "issues": all_issues,
         "suggestions": all_suggestions,
         "rewrite_examples": jd_report.get("rewrite_examples", []),
+        "structured_cv": structured_cv,
         "scoring": {
             "scoring_version": SCORING_VERSION,
             "skill_taxonomy_version": SKILL_TAXONOMY_VERSION,
             "semantic_status": semantic_detail.get("status", "unavailable"),
             "semantic_available": semantic_is_active,
+            "raw_final_score": scorecard.get("raw_final_score", final_score),
             "base_component_weights": FINAL_SCORE_COMPONENT_WEIGHTS,
             "weights_used": score_weights,
             "disabled_dimensions": scorecard["disabled_dimensions"],

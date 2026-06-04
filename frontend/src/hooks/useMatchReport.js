@@ -42,5 +42,17 @@ export function useMatchReport() {
     URL.revokeObjectURL(url);
   };
 
-  return { report, matchDetail, loading, error, fetchReport, saveReview, downloadDocx };
+  const downloadPdf = async (matchId, filename = 'report.pdf') => {
+    const { data: blob } = await matchAPI.downloadPdf(matchId);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return { report, matchDetail, loading, error, fetchReport, saveReview, downloadDocx, downloadPdf };
 }

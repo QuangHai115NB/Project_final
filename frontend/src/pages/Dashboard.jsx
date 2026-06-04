@@ -13,6 +13,22 @@ import { ThemeToggle } from '../theme/ThemeContext';
 
 const MATCH_PAGE_SIZE = 8;
 
+function normalizeTransferPart(value, fallback) {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[^a-zA-Z0-9]/g, '');
+  return normalized || fallback;
+}
+
+function getTransferContent(user) {
+  const accountName = normalizeTransferPart(user?.email?.split('@')[0], `user${user?.id || ''}`);
+  const fullName = normalizeTransferPart(user?.full_name, 'NguoiDung');
+  return `${accountName}_${fullName}`;
+}
+
 function getUserInitials(user) {
   const source = user?.full_name || user?.email || 'U';
   const parts = source.trim().split(/\s+/).filter(Boolean);
@@ -291,6 +307,7 @@ export default function Dashboard() {
 
   const [showUploadCv, setShowUploadCv] = useState(false);
   const [showUploadJd, setShowUploadJd] = useState(false);
+  const [showPaymentQr, setShowPaymentQr] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [currentMatchId, setCurrentMatchId] = useState(null);
   const [selectedCv, setSelectedCv] = useState(null);
@@ -536,7 +553,7 @@ export default function Dashboard() {
     <>
       <PageHeader
         title={tx('nav.reports', 'Lịch sử báo cáo')}
-        description={tx('dashboard.reportsPageDesc', 'Xem, tải Word hoặc xóa các báo cáo đã tạo.')}
+  
       />
       {loadingMatches ? (
         <div className="flex justify-center py-12"><LoadingSpinner /></div>
@@ -622,7 +639,7 @@ export default function Dashboard() {
     const cvLimit = quota?.limits?.cv ?? '∞';
     const jdLimit = quota?.limits?.jd ?? '∞';
     const matchLimit = quota?.limits?.daily_matches ?? '∞';
-    const transferContent = (months) => `CVR-${user?.id || 'USER'}-${months}M`;
+    const transferContent = getTransferContent(user);
     return (
       <>
         <PageHeader
@@ -658,11 +675,21 @@ export default function Dashboard() {
           <Card>
             <h3 className="font-bold text-gray-900">Mã QR thanh toán</h3>
             {paymentInfo?.payment_qr_data_url ? (
-              <img
-                src={paymentInfo.payment_qr_data_url}
-                alt="QR thanh toán"
-                className="mt-4 aspect-square w-full rounded-lg border border-gray-200 object-contain"
-              />
+              <button
+                type="button"
+                onClick={() => setShowPaymentQr(true)}
+                className="mt-4 block w-full rounded-lg border border-gray-200 bg-white p-1 transition hover:border-blue-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                aria-label="Phóng to mã QR thanh toán"
+              >
+                <img
+                  src={paymentInfo.payment_qr_data_url}
+                  alt="QR thanh toán"
+                  className="aspect-square w-full rounded-md object-contain"
+                />
+                <span className="block px-2 py-2 text-xs font-semibold text-blue-600">
+                  Nhấn vào ảnh để phóng to mã QR
+                </span>
+              </button>
             ) : (
               <div className="mt-4 flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-gray-300 text-center text-sm text-gray-500">
                 Admin chưa cập nhật mã QR thanh toán.
@@ -674,6 +701,12 @@ export default function Dashboard() {
             <p className="mt-2 text-sm leading-6 text-gray-600">
               Chọn gói, chuyển khoản theo đúng nội dung bên dưới, sau đó admin sẽ xác nhận và cộng ngày premium thủ công.
             </p>
+            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-blue-500">Nội dung chuyển khoản</p>
+              <p className="mt-1 break-all font-mono text-base font-bold text-blue-700">
+                {transferContent}
+              </p>
+            </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {(paymentInfo?.plans || [
                 { id: 'premium_1m', label: '1 tháng', months: 1, price: 20000 },
@@ -682,10 +715,6 @@ export default function Dashboard() {
                 <div key={item.id} className="rounded-lg border border-gray-200 p-4">
                   <p className="text-sm font-semibold text-gray-500">{item.label}</p>
                   <p className="mt-1 text-3xl font-black text-gray-900">{item.price.toLocaleString('vi-VN')}đ</p>
-                  <p className="mt-3 text-xs font-bold uppercase tracking-wide text-gray-500">Nội dung chuyển khoản</p>
-                  <p className="mt-1 rounded-lg bg-blue-50 px-3 py-2 font-mono text-sm font-bold text-blue-700">
-                    {transferContent(item.months)}
-                  </p>
                 </div>
               ))}
             </div>
@@ -821,6 +850,29 @@ export default function Dashboard() {
         size="xl"
       >
         {currentMatchId ? <MatchReport key={currentMatchId} matchId={currentMatchId} /> : null}
+      </Modal>
+
+      <Modal
+        isOpen={showPaymentQr}
+        onClose={() => setShowPaymentQr(false)}
+        title="Mã QR thanh toán"
+        size="lg"
+      >
+        {paymentInfo?.payment_qr_data_url && (
+          <div className="space-y-4 text-center">
+            <img
+              src={paymentInfo.payment_qr_data_url}
+              alt="Mã QR thanh toán phóng to"
+              className="mx-auto max-h-[70vh] w-full rounded-lg border border-gray-200 bg-white object-contain p-2"
+            />
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Nội dung chuyển khoản</p>
+              <p className="mt-1 break-all font-mono text-base font-bold text-blue-700">
+                {getTransferContent(user)}
+              </p>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {selectedCv && <CvDetailModal cv={selectedCv} onClose={() => setSelectedCv(null)} />}

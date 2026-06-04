@@ -10,6 +10,7 @@ from src.services.documents import (
     create_match_report,
     delete_match_report,
     download_match_report,
+    download_match_report_pdf,
     get_match_detail,
     list_match_reports,
     update_match_review,
@@ -71,6 +72,18 @@ def download_match(match_id: int):
     return send_file(
         io.BytesIO(docx_bytes),
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+@match_bp.get("/matches/download-pdf/<int:match_id>")
+@require_auth
+def download_match_pdf(match_id: int):
+    pdf_bytes, filename = download_match_report_pdf(user_id=g.user_id, match_id=match_id)
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
         as_attachment=True,
         download_name=filename,
     )

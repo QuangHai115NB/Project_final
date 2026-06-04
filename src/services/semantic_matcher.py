@@ -34,23 +34,52 @@ _model = None
 _model_load_failed = False
 _model_name = "all-MiniLM-L6-v2"
 _allow_model_download = os.getenv("SEMANTIC_MODEL_ALLOW_DOWNLOAD", "false").lower() in ("true", "1", "yes")
+_model_status_logged = False
+
+
+def _apply_model_loading_mode() -> str:
+    if _allow_model_download:
+        return "download-enabled"
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    return "offline-local-cache"
 
 
 def _get_model():
     """Lazy load model — chỉ load 1 lần, giữ trong memory."""
-    global _model, _model_load_failed
+    global _model, _model_load_failed, _model_status_logged
     if _model_load_failed:
         return None
     if _model is None:
         try:
-            from sentence_transformers import SentenceTransformer
-            _model = SentenceTransformer(
-                _model_name,
-                local_files_only=not _allow_model_download,
+            loading_mode = _apply_model_loading_mode()
+            print(
+                f"[semantic-model] Loading sentence-transformers model '{_model_name}' "
+                f"(mode={loading_mode})...",
+                flush=True,
             )
-        except Exception:
+            from sentence_transformers import SentenceTransformer
+            _model = SentenceTransformer(_model_name)
+            print(
+                f"[semantic-model] Loaded '{_model_name}' successfully. Semantic matching is active.",
+                flush=True,
+            )
+            _model_status_logged = True
+        except Exception as exc:
             _model_load_failed = True
+            print(
+                f"[semantic-model] Failed to load '{_model_name}'. "
+                f"Semantic matching will use fallback. Error: {exc}",
+                flush=True,
+            )
+            _model_status_logged = True
             return None
+    elif not _model_status_logged:
+        print(
+            f"[semantic-model] Model '{_model_name}' already loaded. Semantic matching is active.",
+            flush=True,
+        )
+        _model_status_logged = True
     return _model
 
 
@@ -255,7 +284,7 @@ def match_bullets_to_jd(
         cv_experience_text: str,
         jd_text: str,
         top_k: int = 5,
-        threshold: float = 0.45,
+        threshold: float = 0.5,
 ) -> Dict:
     """
     So khớp từng bullet trong CV experience với JD responsibilities.

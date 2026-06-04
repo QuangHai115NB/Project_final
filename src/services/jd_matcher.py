@@ -46,12 +46,20 @@ def _safe_ratio(numerator: int, denominator: int) -> float:
         return 1.0
     return numerator / denominator
 
-#Tim so exp lon nhat roi lay no ra
+def _extract_experience_months(text: str) -> int:
+    normalized = (text or "").lower()
+    values = []
+    for amount, unit in re.findall(r"(\d+(?:\.\d+)?)\+?\s*(years?|yrs?|months?|mos?)", normalized):
+        number = float(amount)
+        if unit.startswith(("year", "yr")):
+            values.append(int(number * 12))
+        else:
+            values.append(int(number))
+    return max(values) if values else 0
+
+
 def _extract_years_of_experience(text: str) -> int:
-    values = re.findall(r"(\d+)\+?\s*(?:years?|yrs?)", text.lower())
-    if not values:
-        return 0
-    return max(int(v) for v in values)
+    return int(_extract_experience_months(text) // 12)
 
 #Du doan level của CV/JD
 def _detect_seniority(text: str) -> str:
@@ -464,37 +472,34 @@ def _compute_experience_score(
         jd_text: str,
 ) -> Tuple[float, Dict]:
     """
-    Layer 4: Experience years + responsibility alignment.
-
-    Formula:
-        experience_score = years_score * 0.30 + responsibility_score * 0.70
+    Layer 4: Experience duration only.
 
     Returns: (score_0_100, detail_dict)
     """
-    experience_text = "\n".join(
+    duration_text = "\n".join(
         cv_sections.get(sec, "") for sec in ("Experience", "Projects")
     ).strip() or cv_text
 
-    cv_years = _extract_years_of_experience(experience_text)
-    jd_years = _extract_years_of_experience(jd_text)
+    cv_months = _extract_experience_months(duration_text)
+    jd_months = _extract_experience_months(jd_text)
+    cv_years = round(cv_months / 12.0, 2)
+    jd_years = round(jd_months / 12.0, 2)
     seniority_cv = _detect_seniority(cv_text)
     seniority_jd = _detect_seniority(jd_text)
 
-    if jd_years > 0:
-        years_score = min(100.0, (cv_years / jd_years) * 100.0) if cv_years > 0 else 35.0
+    if jd_months > 0:
+        duration_score = min(100.0, (cv_months / jd_months) * 100.0) if cv_months > 0 else 35.0
     else:
-        years_score = 70.0
+        duration_score = 75.0 if cv_months > 0 else 60.0
 
-    # Responsibility similarity (TF-IDF nếu không có semantic)
-    responsibility_score = _tfidf_similarity(experience_text, jd_text)
-
-    experience_score = (responsibility_score * 0.70) + (years_score * 0.30)
-
-    return experience_score, {
+    return duration_score, {
+        "cv_months": cv_months,
+        "jd_months": jd_months,
         "cv_years": cv_years,
         "jd_years": jd_years,
-        "years_score": round(years_score, 2),
-        "responsibility_score": round(responsibility_score, 2),
+        "years_score": round(duration_score, 2),
+        "duration_score": round(duration_score, 2),
+        "responsibility_score": None,
         "cv_seniority": seniority_cv,
         "jd_seniority": seniority_jd,
     }
@@ -728,8 +733,8 @@ def _generate_errors_and_suggestions(
             ),
         })
 
-    # --- Experience alignment ---
-    exp_score = experience_detail.get("responsibility_score", 0)
+    # Experience content alignment is handled by semantic/keyword checks.
+    exp_score = 100.0
     if exp_score < 45:
         issues.append({
             "code": "weak_experience_alignment",
@@ -789,7 +794,7 @@ def _generate_errors_and_suggestions(
             errors=issues,
             cv_sections=cv_sections,
             jd_text=jd_text,
-            max_api_calls=3,
+            max_api_calls=5,
         )
     else:
         # Thêm suggested_fix rule-based nếu không có suggestion engine

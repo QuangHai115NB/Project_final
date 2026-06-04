@@ -10,6 +10,7 @@ from src.db.repository import CVRepository, JDRepository, MatchRepository, UserR
 from src.services.jd_matcher import match_cv_to_jd
 from src.services.report_builder import build_match_report
 from src.services.report_docx_generator import generate_match_report_docx
+from src.services.report_pdf_generator import generate_match_report_pdf
 from src.services.rule_checker import run_rule_checks
 from src.services.section_parser import parse_sections
 from src.services.quota_service import ensure_can_create_match
@@ -186,5 +187,28 @@ def download_match_report(*, user_id: int, match_id: int) -> tuple[bytes, str]:
         if len(safe_name) > 200:
             safe_name = f"match_report_{record.id}.docx"
         return docx_bytes, safe_name
+    finally:
+        db.close()
+
+
+def download_match_report_pdf(*, user_id: int, match_id: int) -> tuple[bytes, str]:
+    db = SessionLocal()
+    try:
+        record = MatchRepository(db).get_for_user(match_id, user_id)
+        if not record:
+            raise NotFoundError("Match not found")
+        try:
+            report_json = json.loads(record.report_json)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ValidationError("Report data bi loi") from exc
+
+        pdf_bytes = generate_match_report_pdf(record, report_json)
+        cv_title = report_json.get("summary", {}).get("cv_title", f"CV-{record.cv_id}")
+        jd_title = report_json.get("summary", {}).get("jd_title", f"JD-{record.jd_id}")
+        date_str = record.created_at.strftime("%Y%m%d") if record.created_at else ""
+        safe_name = secure_filename(f"{cv_title}_vs_{jd_title}_{date_str}.pdf")
+        if len(safe_name) > 200:
+            safe_name = f"match_report_{record.id}.pdf"
+        return pdf_bytes, safe_name
     finally:
         db.close()

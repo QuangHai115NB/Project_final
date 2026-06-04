@@ -193,6 +193,12 @@ export const matchAPI = {
       responseType: 'blob',
     });
   },
+
+  downloadPdf: (matchId) => {
+    return api.get(`/matches/download-pdf/${matchId}`, {
+      responseType: 'blob',
+    });
+  },
 };
 
 export const adminAPI = {
