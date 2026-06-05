@@ -284,14 +284,14 @@ def _pdf_explanation_text(explanations: dict, key: str) -> str:
 
 
 def _add_breakdown(story, styles, breakdown: dict, weights: dict, explanations: dict | None = None) -> None:
-    rows = [["Nhom danh gia", "Diem", "Trong so", "Vi sao bi tru diem"]]
+    rows = [["Nhóm đánh giá", "Điểm", "Trọng số", "Vì sao bị trừ điểm"]]
     for label, key in [
-        ("Cau truc CV", "section_score"),
-        ("Muc dap ung ky nang", "skill_score"),
-        ("Muc khop ngu nghia", "semantic_score"),
-        ("Tu khoa ky thuat", "keyword_score"),
-        ("Thoi luong kinh nghiem", "experience_score"),
-        ("Chat luong bang chung", "jd_structure_score"),
+        ("Cấu trúc CV", "section_score"),
+        ("Mức đáp ứng kỹ năng", "skill_score"),
+        ("Mức khớp ngữ nghĩa", "semantic_score"),
+        ("Từ khóa kỹ thuật", "keyword_score"),
+        ("Thời lượng kinh nghiệm", "experience_score"),
+        ("Chất lượng bằng chứng", "jd_structure_score"),
     ]:
         if key not in breakdown and key not in weights:
             continue
@@ -302,7 +302,7 @@ def _add_breakdown(story, styles, breakdown: dict, weights: dict, explanations: 
             _pdf_explanation_text(explanations or {}, key),
         ])
 
-    story.append(_paragraph("Bang diem co trong so", styles["heading"]))
+    story.append(_paragraph("Bảng điểm có trọng số", styles["heading"]))
     table = Table(
         [[_paragraph(cell, styles["normal"]) for cell in row] for row in rows],
         colWidths=[4.5 * cm, 2.4 * cm, 2.2 * cm, 7.3 * cm],

@@ -862,6 +862,50 @@ Requirements
     assert {item["category"] for item in requirements} >= {"soft_skill", "domain_knowledge"}
 
 
+def test_enterprise_requirements_are_scored_gradually_not_zero():
+    """Recruiter-equivalent enterprise evidence should receive partial credit, not hard-zero."""
+    from src.services.jd_matcher import match_cv_to_jd
+
+    cv = """
+Education
+University of Transport and Communications (UTC)
+Bachelor of Computer Science
+
+Experience
+- Developed Java Spring Boot business services for enterprise HR workflows.
+- Built a microservices architecture with strongly-typed domain models, validation components, service abstractions, and repository layers.
+- Analyzed enterprise HR workflow requirements and translated business requirements into backend specifications.
+- Implemented Java Spring Boot APIs for business workflows.
+"""
+    jd = """
+Requirements
+- Bachelor's degree in Computer Science, Information Technology, or Electronic & Telecommunications from a top-tier university.
+- Design, develop and deliver enterprise-grade software systems.
+- Analyze enterprise business workflows.
+- Translate business requirements into modular software specifications.
+"""
+    parsed_cv = {
+        "sections": {
+            "Education": "University of Transport and Communications (UTC)\nBachelor of Computer Science",
+            "Experience": (
+                "- Developed Java Spring Boot business services for enterprise HR workflows.\n"
+                "- Built a microservices architecture with strongly-typed domain models, validation components, service abstractions, and repository layers.\n"
+                "- Analyzed enterprise HR workflow requirements and translated business requirements into backend specifications.\n"
+                "- Implemented Java Spring Boot APIs for business workflows."
+            ),
+        }
+    }
+
+    result = match_cv_to_jd(cv, jd, parsed_cv=parsed_cv, use_suggestion_engine=False)
+    requirements = {item["requirement"]: item for item in result["requirements"]["requirements"]}
+
+    assert result["education"]["missing"] == []
+    assert any("Bachelor" in item["requirement"] and item["score"] == 100 for item in requirements.values())
+    assert any("Design, develop and deliver" in key and item["score"] >= 60 for key, item in requirements.items())
+    assert any("Analyze enterprise business workflows" in key and item["score"] >= 60 for key, item in requirements.items())
+    assert any("modular software specifications" in key and item["score"] >= 60 for key, item in requirements.items())
+
+
 if __name__ == "__main__":
     tests = [
         ("Skill Extraction", test_skill_extraction),
@@ -890,6 +934,7 @@ if __name__ == "__main__":
         ("Covered Education Is Not Semantic Gap", test_education_requirement_is_not_reported_as_uncovered_semantic_gap),
         ("Covered Skill Lines Are Not Semantic Gaps", test_skill_only_requirements_are_not_reported_as_semantic_gaps_when_covered),
         ("Section-aware Soft and Domain Evidence", test_section_aware_requirement_coverage_maps_soft_and_domain_evidence),
+        ("Enterprise Requirements Gradual Scoring", test_enterprise_requirements_are_scored_gradually_not_zero),
     ]
 
     passed = 0

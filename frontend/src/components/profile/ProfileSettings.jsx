@@ -77,7 +77,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
       showToast(data.message || tx('profile.updateSuccess', 'Da cap nhat thong tin ca nhan'), 'success');
     } catch (error) {
       showToast(
-        error.response?.data?.error || tx('profile.updateFailed', 'Khong the cap nhat thong tin ca nhan'),
+        error.response?.data?.error || tx('profile.updateFailed', 'Không thể cập nhật thông tin cá nhân'),
         'error'
       );
     } finally {
@@ -101,7 +101,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
       showToast(data.message || tx('profile.avatarUploadSuccess', 'Da cap nhat avatar'), 'success');
     } catch (error) {
       showToast(
-        error.response?.data?.error || tx('profile.avatarUploadFailed', 'Khong the cap nhat avatar'),
+        error.response?.data?.error || tx('profile.avatarUploadFailed', 'Không thể cập nhật avatar'),
         'error'
       );
     } finally {
@@ -117,7 +117,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
       showToast(data.message || tx('profile.avatarDeleteSuccess', 'Da xoa avatar'), 'success');
     } catch (error) {
       showToast(
-        error.response?.data?.error || tx('profile.avatarDeleteFailed', 'Khong the xoa avatar'),
+        error.response?.data?.error || tx('profile.avatarDeleteFailed', 'Không thể xóa avatar'),
         'error'
       );
     } finally {
@@ -132,7 +132,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      showToast(tx('profile.passwordMismatch', 'Xac nhan mat khau khong khop'), 'error');
+      showToast(tx('profile.passwordMismatch', 'Xác nhận mật khẩu không khớp'), 'error');
       return;
     }
 
@@ -147,7 +147,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
       showToast(data.message || tx('profile.passwordUpdateSuccess', 'Da doi mat khau'), 'success');
     } catch (error) {
       showToast(
-        error.response?.data?.error || tx('profile.passwordUpdateFailed', 'Khong the doi mat khau'),
+        error.response?.data?.error || tx('profile.passwordUpdateFailed', 'Không thể đổi mật khẩu'),
         'error'
       );
     } finally {
@@ -244,7 +244,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
             />
             <div className="md:col-span-2 flex justify-end">
               <Button type="submit" loading={savingProfile}>
-                {tx('profile.saveProfile', 'Luu thong tin')}
+                {tx('profile.saveProfile', 'Lưu thông tin')}
               </Button>
             </div>
           </form>

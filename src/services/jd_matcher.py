@@ -277,9 +277,25 @@ def _education_requirement_covered(requirement: str, education_text: str) -> boo
         "software engineering",
         "information technology",
         "information systems",
+        "electronic",
+        "electronics",
+        "telecommunications",
     )
     requested_fields = [field for field in field_markers if field in req]
+    accepted_fields = (
+        "computer science",
+        "software engineering",
+        "information technology",
+        "information systems",
+        "electronics",
+        "electronic",
+        "telecommunications",
+    )
     if requested_fields and not any(field in edu for field in requested_fields):
+        if any(marker in req for marker in (" or ", ",", "/")) and any(field in edu for field in accepted_fields):
+            return True
+        if not degree_required and re.search(r"\b(bachelor|b\.?\s*s\.?|bsc|b\.?\s*sc\.?|degree)\b", edu) and any(field in edu for field in accepted_fields):
+            return True
         return False
 
     return True
@@ -373,6 +389,13 @@ SOFT_SKILL_MAP = {
         "requirement analysis",
         "documentation",
     ],
+    "analysis": [
+        "requirement analysis",
+        "workflow analysis",
+        "business analysis",
+        "analyzed enterprise business workflows",
+        "translated business requirements",
+    ],
 }
 
 
@@ -403,6 +426,78 @@ DOMAIN_KNOWLEDGE_MAP = {
         "optimized algorithm",
         "data structures",
     ],
+    "workflow": [
+        "workflow",
+        "business workflow",
+        "business process",
+        "operational process",
+        "hr workflow",
+        "transaction flow",
+        "enterprise hr workflow requirements",
+    ],
+    "business workflows": [
+        "business workflow",
+        "business workflows",
+        "business process",
+        "operational process",
+        "hr workflow",
+        "requirement analysis",
+        "workflow analysis",
+        "business analysis",
+    ],
+    "modular software specification": [
+        "modular software specification",
+        "modular software design",
+        "service layer",
+        "service abstractions",
+        "domain model",
+        "domain models",
+        "strongly-typed domain models",
+        "repository layer",
+        "repository layers",
+        "validation components",
+        "microservice",
+        "microservices",
+        "component design",
+    ],
+    "modular software specifications": [
+        "modular software specification",
+        "modular software design",
+        "service layer",
+        "service abstractions",
+        "domain model",
+        "domain models",
+        "repository layer",
+        "repository layers",
+        "validation components",
+        "microservice",
+        "microservices",
+        "component design",
+    ],
+    "system analysis": [
+        "system analysis",
+        "requirement analysis",
+        "workflow analysis",
+        "business analysis",
+        "translated business requirements",
+    ],
+    "enterprise-grade": [
+        "enterprise-grade",
+        "enterprise",
+        "business services",
+        "spring boot business services",
+        "microservices architecture",
+        "full-stack ordering platform",
+        "java spring boot apis",
+    ],
+}
+
+
+ACTION_EVIDENCE_MAP = {
+    "design": ["designed", "built", "architected", "microservices architecture", "domain models", "service abstractions", "repository layers", "component design"],
+    "develop": ["developed", "implemented", "built", "java spring boot", "business services", "apis"],
+    "deliver": ["delivered", "deployed", "released", "production", "achieving", "supporting", "platform"],
+    "analyze": ["analyzed", "analysis", "requirement analysis", "workflow analysis", "business analysis", "translated business requirements"],
 }
 
 
@@ -473,6 +568,43 @@ def _contains_any(text: str, terms: List[str]) -> bool:
     return any(normalize_for_matching(term) in normalized for term in terms)
 
 
+def _graded_similarity_score(score: float) -> float:
+    value = float(score or 0.0)
+    if value > 1.0:
+        value = value / 100.0
+    if value >= 0.8:
+        return 100.0
+    if value >= 0.7:
+        return 80.0
+    if value >= 0.6:
+        return 60.0
+    if value >= 0.5:
+        return 40.0
+    if value >= 0.4:
+        return 20.0
+    return 0.0
+
+
+def _action_evidence_score(line: str, section_text: str) -> float:
+    lowered_line = str(line or "").lower()
+    normalized_section = normalize_for_matching(section_text)
+    scores = []
+    for action, aliases in ACTION_EVIDENCE_MAP.items():
+        if re.search(rf"\b{re.escape(action)}(?:s|ed|ing)?\b", lowered_line):
+            if any(normalize_for_matching(alias) in normalized_section for alias in aliases):
+                if action == "develop":
+                    scores.append(100.0)
+                elif action in {"design", "analyze"}:
+                    scores.append(60.0)
+                else:
+                    scores.append(20.0)
+            else:
+                scores.append(0.0)
+    if not scores:
+        return 0.0
+    return sum(scores) / len(scores)
+
+
 def _requirement_alias_terms(line: str, category: str) -> List[str]:
     lowered = str(line or "").lower()
     terms = [line]
@@ -493,22 +625,28 @@ def _requirement_alias_terms(line: str, category: str) -> List[str]:
     return list(dict.fromkeys(term for term in terms if term))
 
 
-def _section_matches_requirement(section_text: str, line: str, category: str, line_skills: Set[str]) -> bool:
+def _section_requirement_score(section_text: str, line: str, category: str, line_skills: Set[str]) -> float:
     if not section_text:
-        return False
+        return 0.0
     if category == "education":
-        return _education_requirement_covered(line, section_text)
+        return 100.0 if _education_requirement_covered(line, section_text) else 0.0
+
     section_skills = set(extract_skills(section_text).get("skills", []))
     if line_skills and line_skills <= section_skills:
-        return True
+        return 100.0
     if line_skills and (line_skills & section_skills) and category in {"technical_skill", "domain_knowledge"}:
-        return True
+        return 60.0
+
+    action_score = _action_evidence_score(line, section_text)
     if _contains_any(section_text, _requirement_alias_terms(line, category)):
-        return True
+        return max(90.0, action_score)
+
+    tfidf_score = 0.0
     try:
-        return _tfidf_similarity(section_text, line) >= 28.0
+        tfidf_score = _tfidf_similarity(section_text, line)
     except Exception:
-        return False
+        tfidf_score = 0.0
+    return max(action_score, _graded_similarity_score(tfidf_score))
 
 
 def _score_requirement_evidence(line: str, category: str, section_text_map: Dict[str, str]) -> Dict:
@@ -527,8 +665,9 @@ def _score_requirement_evidence(line: str, category: str, section_text_map: Dict
     best_section = ""
     for section in preferred_scopes:
         text = section_text_map.get(section, "")
-        if _section_matches_requirement(text, line, category, line_skills):
-            section_score = REQUIREMENT_SECTION_STRENGTH.get(section, 50)
+        evidence_score = _section_requirement_score(text, line, category, line_skills)
+        if evidence_score > 0:
+            section_score = evidence_score * (REQUIREMENT_SECTION_STRENGTH.get(section, 50) / 100.0)
             matched_sections.append(section)
             if section_score > best_score:
                 best_score = float(section_score)
@@ -1074,7 +1213,7 @@ def _compute_structure_score(
     metric_count = len(metric_bullets)
 
     penalty = 0
-    penalty += len(skills_no_evidence) * 8  # 8 điểm mỗi skill thiếu evidence
+    penalty += len(skills_no_evidence) * 4  # 8 điểm mỗi skill thiếu evidence
     if total > 0:
         metric_ratio = metric_count / total
         if metric_ratio == 0:

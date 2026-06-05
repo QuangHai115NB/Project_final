@@ -906,7 +906,7 @@ export default function MatchReport({ matchId, compact = false }) {
         className="w-full bg-white dark:bg-slate-950"
         onClick={() => downloadPdf(matchId, `report_${matchId}.pdf`)}
       >
-        {language === 'vi' ? '!! Download !!' : 'Download PDF report'}
+        {language === 'vi' ? 'Tải báo cáo PDF' : 'Download PDF report'}
       </Button>
 
       <ScoringGuide isOpen={showGuide} onClose={() => setShowGuide(false)} t={t} />

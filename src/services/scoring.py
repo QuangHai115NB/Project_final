@@ -8,8 +8,8 @@ SCORING_VERSION = "2026-06-fit-calibrated-v2"
 
 FINAL_SCORE_COMPONENT_WEIGHTS = {
     "skill_score": 40.0,
-    "semantic_score": 20.0,
-    "keyword_score": 10.0,
+    "semantic_score": 10.0,
+    "keyword_score": 20.0,
     "experience_score": 20.0,
     "jd_structure_score": 5.0,
     "section_score": 5.0,
@@ -18,8 +18,8 @@ FINAL_SCORE_COMPONENT_WEIGHTS = {
 AXIS_WEIGHT_PROFILES = {
     "overall_fit": {
         "skill_score": 45.0,
-        "semantic_score": 25.0,
-        "keyword_score": 10.0,
+        "semantic_score": 10.0,
+        "keyword_score": 25.0,
         "experience_score": 20.0,
     },
     "evidence_strength": {

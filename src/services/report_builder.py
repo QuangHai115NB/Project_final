@@ -122,12 +122,15 @@ def _score_explanation(score: float, weight: float | None, reasons_vi: List[str]
             "score": normalized_score,
             "weight": weight,
             "lost_points": 0.0,
-            "summary_vi": "Khong bi tru diem o hang muc nay.",
+            "summary_vi": "Không bị trừ điểm ở hạng mục này.",
             "summary_en": "No points were deducted in this dimension.",
             "reasons_vi": [],
             "reasons_en": [],
         }
     if not reasons_vi:
+        reasons_vi = ["Điểm bị giảm do chưa đủ tín hiệu rõ trong dữ liệu CV/JD đã phân tích."]
+        reasons_en = ["Score is reduced because the analyzed CV/JD data does not provide enough clear signals."]
+    if False:
         if normalized_score >= 99.5:
             reasons_vi = ["Không bị trừ điểm đáng kể ở hạng mục này."]
             reasons_en = ["No meaningful deduction in this dimension."]
@@ -230,10 +233,10 @@ def _build_score_explanations(
         skill_reasons_vi.append(f"Mức bao phủ kỹ năng bắt buộc hiện là {float(skills.get('required_coverage_pct') or 0):.0f}%.")
         skill_reasons_en.append(f"Required skill coverage is {float(skills.get('required_coverage_pct') or 0):.0f}%.")
     if education.get("missing"):
-        skill_reasons_vi.append(f"Education chua cover yeu cau bang cap/nganh hoc: {_short_list(education.get('missing', []))}.")
+        skill_reasons_vi.append(f"Education chưa đáp ứng rõ yêu cầu bằng cấp/ngành học: {_short_list(education.get('missing', []))}.")
         skill_reasons_en.append(f"Education requirements are not clearly covered: {_short_list(education.get('missing', []))}.")
     elif education.get("covered"):
-        skill_reasons_vi.append(f"Education da cover yeu cau bang cap/nganh hoc: {_short_list(education.get('covered', []), limit=2)}.")
+        skill_reasons_vi.append(f"Education đã đáp ứng yêu cầu bằng cấp/ngành học: {_short_list(education.get('covered', []), limit=2)}.")
         skill_reasons_en.append(f"Education covers degree/field requirements: {_short_list(education.get('covered', []), limit=2)}.")
 
     semantic_reasons_vi = []
@@ -246,7 +249,7 @@ def _build_score_explanations(
             semantic_reasons_vi.append(f"CV bao phủ khoảng {float(semantic.get('jd_coverage_score') or 0):.0f}% yêu cầu chính trong JD đã lọc.")
             semantic_reasons_en.append(f"The CV covers about {float(semantic.get('jd_coverage_score') or 0):.0f}% of filtered JD requirements.")
         if semantic.get("requirement_coverage_score") is not None:
-            semantic_reasons_vi.append(f"CV cover khoang {float(semantic.get('requirement_coverage_score') or 0):.0f}% requirement theo dung section.")
+            semantic_reasons_vi.append(f"CV bao phủ khoảng {float(semantic.get('requirement_coverage_score') or 0):.0f}% yêu cầu theo đúng section.")
             semantic_reasons_en.append(f"The CV covers about {float(semantic.get('requirement_coverage_score') or 0):.0f}% of requirements in the right sections.")
         missing_requirements = requirements.get("missing", []) or []
         if missing_requirements:
@@ -258,7 +261,7 @@ def _build_score_explanations(
                 evidence_score = float(item.get("score", 0) or 0)
                 details_vi.append(f"{requirement} [{category}, evidence {evidence_score:.0f}/100]")
                 details_en.append(f"{requirement} [{category}, evidence {evidence_score:.0f}/100]")
-            semantic_reasons_vi.append("Bi tru vi cac requirement nay chua co evidence du manh o section phu hop: " + _short_list(details_vi, 3) + ".")
+            semantic_reasons_vi.append("Bị trừ vì các yêu cầu này chưa có bằng chứng đủ mạnh ở section phù hợp: " + _short_list(details_vi, 3) + ".")
             semantic_reasons_en.append("Deducted because these requirements lack strong evidence in the expected sections: " + _short_list(details_en, 3) + ".")
         unmatched = _clean_unmatched_jd_lines(semantic.get("unmatched_jd_lines", []), limit=3)
         if unmatched:
