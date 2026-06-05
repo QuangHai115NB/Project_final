@@ -829,7 +829,7 @@ export default function Dashboard() {
             </div>
           </header>
 
-          <main className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-8">
+          <main className="mx-auto w-full max-w-7xl px-4 py-6 lg:px-8">
             {renderContent()}
           </main>
         </div>
@@ -847,7 +847,7 @@ export default function Dashboard() {
         isOpen={showReportModal}
         onClose={() => { setShowReportModal(false); setCurrentMatchId(null); }}
         title={t('dashboard.matchReport')}
-        size="xl"
+        size="full"
       >
         {currentMatchId ? <MatchReport key={currentMatchId} matchId={currentMatchId} /> : null}
       </Modal>

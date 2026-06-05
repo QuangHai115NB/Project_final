@@ -11,7 +11,7 @@ def extract_text_from_pdf(pdf_path: str) -> Tuple[str, Dict[str, Any]]:
         for i, page in enumerate(pdf.pages):
             page_text = page.extract_text() or ""
             # Thêm marker để debug nếu text bị lẫn cột
-            text_parts.append(f"\n\n--- Page {i+1} ---\n{page_text}")
+            text_parts.append(page_text)
 
     full_text = "\n".join(text_parts).strip()
 

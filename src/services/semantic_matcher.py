@@ -22,19 +22,26 @@ import os
 import re
 from typing import Dict, List, Optional, Tuple
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
-
 from src.data.rules_config import KEYWORD_EXCLUDED_PATTERNS
 from src.data.skills_taxonomy import extract_skills, normalize_skill_name
 from src.services.text_preprocess import normalize_for_matching
 
+# Torch must be loaded before sklearn on Windows in this environment. If sklearn
+# loads first, torch can fail later with c10.dll initialization errors.
+_torch_preload_error = ""
+try:
+    import torch as _torch  # noqa: F401
+except Exception as exc:
+    _torch_preload_error = str(exc)
+
 # Lazy import để tránh crash nếu chưa cài
 _model = None
 _model_load_failed = False
+_model_load_error = ""
 _model_name = "all-MiniLM-L6-v2"
 _allow_model_download = os.getenv("SEMANTIC_MODEL_ALLOW_DOWNLOAD", "false").lower() in ("true", "1", "yes")
 _model_status_logged = False
+_model_loading_mode = ""
 
 
 def _apply_model_loading_mode() -> str:
@@ -47,12 +54,17 @@ def _apply_model_loading_mode() -> str:
 
 def _get_model():
     """Lazy load model — chỉ load 1 lần, giữ trong memory."""
-    global _model, _model_load_failed, _model_status_logged
+    global _model, _model_load_failed, _model_load_error, _model_status_logged, _model_loading_mode
+    if _torch_preload_error:
+        _model_load_failed = True
+        _model_load_error = _torch_preload_error
+        return None
     if _model_load_failed:
         return None
     if _model is None:
         try:
             loading_mode = _apply_model_loading_mode()
+            _model_loading_mode = loading_mode
             print(
                 f"[semantic-model] Loading sentence-transformers model '{_model_name}' "
                 f"(mode={loading_mode})...",
@@ -67,6 +79,7 @@ def _get_model():
             _model_status_logged = True
         except Exception as exc:
             _model_load_failed = True
+            _model_load_error = str(exc)
             print(
                 f"[semantic-model] Failed to load '{_model_name}'. "
                 f"Semantic matching will use fallback. Error: {exc}",
@@ -83,7 +96,50 @@ def _get_model():
     return _model
 
 
+def _model_status_payload() -> Dict[str, object]:
+    model_loaded = _model is not None and not _model_load_failed
+    if model_loaded:
+        message = f"Loaded '{_model_name}'. Semantic embedding matching is active."
+    elif _model_load_failed:
+        message = f"Failed to load '{_model_name}'. Using TF-IDF fallback."
+    else:
+        message = f"Model '{_model_name}' has not been loaded yet."
+
+    return {
+        "model_name": _model_name,
+        "model_loaded": model_loaded,
+        "model_loading_mode": _model_loading_mode or _apply_model_loading_mode(),
+        "model_status_message": message,
+        "model_load_error": _model_load_error,
+    }
+
+
+def _extract_bullets_flexible(text: str) -> List[str]:
+    lines = []
+    seen = set()
+    for raw in re.split(r"[\n;]+", text or ""):
+        cleaned = re.sub(r"^[\s\-*]+", "", raw or "").strip()
+        parts = [cleaned]
+        if len(cleaned.split()) >= 12:
+            parts = re.split(r"(?<=[.!?])\s+", cleaned)
+
+        for part in parts:
+            line = re.sub(r"\s+", " ", part or "").strip()
+            if len(line.split()) < 4:
+                continue
+            key = line.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(line)
+    return lines
+
+
 def _extract_bullets(text: str) -> List[str]:
+    flexible = _extract_bullets_flexible(text)
+    if flexible:
+        return flexible
+
     """
     Tách text thành danh sách bullet/câu có nghĩa.
     Lọc bỏ dòng quá ngắn (header, tên section...).
@@ -125,11 +181,7 @@ def _extract_jd_responsibilities(jd_text: str) -> List[str]:
         line for line in _extract_bullets(relevant_text)
         if not _is_non_matching_jd_line(line)
     ]
-    skill_lines = [
-        line for line in cleaned_lines
-        if extract_skills(line).get("skills")
-    ]
-    return skill_lines or cleaned_lines
+    return cleaned_lines
 
 
 def _is_non_matching_jd_line(line: str) -> bool:
@@ -142,6 +194,7 @@ def _fallback_semantic_result(
     jd_text: str,
     status: str,
     top_k: int = 5,
+    is_fallback: bool = True,
 ) -> Dict:
     """
     Lightweight fallback when sentence-transformers is unavailable.
@@ -155,15 +208,19 @@ def _fallback_semantic_result(
     jd_norm = normalize_for_matching(jd_text)
 
     if not cv_norm or not jd_norm:
-        return {
+        result = {
             "avg_score": 0.0,
             "semantic_score": 0.0,
             "top_matches": [],
             "weak_matches": [],
             "unmatched_jd_lines": jd_lines[:10],
             "status": f"{status}_empty_input",
-            "fallback": "tfidf_skill_overlap",
+            "scorer": "tfidf_skill_overlap",
+            **_model_status_payload(),
         }
+        if is_fallback:
+            result["fallback"] = "tfidf_skill_overlap"
+        return result
 
     overall_score = 0.0
     line_coverage_score = 0.0
@@ -173,6 +230,9 @@ def _fallback_semantic_result(
     unmatched_jd = []
 
     try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
+
         overall_matrix = TfidfVectorizer(stop_words="english", ngram_range=(1, 2)).fit_transform([cv_norm, jd_norm])
         overall_score = float(sk_cosine(overall_matrix[0:1], overall_matrix[1:2])[0][0]) * 100.0
     except Exception:
@@ -180,6 +240,9 @@ def _fallback_semantic_result(
 
     if cv_bullets and jd_lines:
         try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
+
             cv_subset = cv_bullets[:30]
             jd_subset = jd_lines[:20]
             matrix = TfidfVectorizer(stop_words="english", ngram_range=(1, 2)).fit_transform(cv_subset + jd_subset)
@@ -237,20 +300,47 @@ def _fallback_semantic_result(
     top_matches.sort(key=lambda x: x["score"], reverse=True)
     weak_matches.sort(key=lambda x: x["score"])
 
-    return {
+    result = {
         "avg_score": round(avg_best_score or overall_score, 2),
         "semantic_score": min(semantic_score, 100.0),
         "top_matches": top_matches[:top_k],
         "weak_matches": weak_matches[:top_k],
         "unmatched_jd_lines": unmatched_jd[:5],
         "status": status,
-        "fallback": "tfidf_skill_overlap",
+        "scorer": "tfidf_skill_overlap",
         "overall_tfidf_score": round(overall_score, 2),
         "line_coverage_score": round(line_coverage_score, 2),
         "skill_overlap_score": round(skill_overlap_score, 2),
         "cv_bullets_analyzed": len(cv_bullets[:30]),
         "jd_lines_analyzed": len(jd_lines[:20]),
+        **_model_status_payload(),
     }
+    if is_fallback:
+        result["fallback"] = "tfidf_skill_overlap"
+    return result
+
+
+def _select_best_semantic_result(model_result: Dict, tfidf_result: Dict, model_status: str = "ok") -> Dict:
+    model_score = float(model_result.get("semantic_score", 0.0) or 0.0)
+    tfidf_score = float(tfidf_result.get("semantic_score", 0.0) or 0.0)
+
+    if tfidf_score > model_score:
+        selected = dict(tfidf_result)
+        selected["status"] = "ok"
+        selected["selected_semantic_scorer"] = "tfidf_skill_overlap"
+    else:
+        selected = dict(model_result)
+        selected["status"] = model_result.get("status") or ("ok" if model_status == "ok" else model_status)
+        selected["selected_semantic_scorer"] = "sentence_transformer"
+
+    selected["model_semantic_score"] = round(model_score, 2)
+    selected["tfidf_semantic_score"] = round(tfidf_score, 2)
+    selected["model_status"] = model_status
+    selected["tfidf_candidate_status"] = tfidf_result.get("status", "")
+    selected["ensemble_strategy"] = "max(sentence_transformer, tfidf_skill_overlap)"
+    selected["model_loaded"] = True
+    selected["model_name"] = _model_name
+    return selected
 
 
 def compute_semantic_similarity(text_a: str, text_b: str) -> float:
@@ -284,7 +374,7 @@ def match_bullets_to_jd(
         cv_experience_text: str,
         jd_text: str,
         top_k: int = 5,
-        threshold: float = 0.5,
+        threshold: float = 0.6,
 ) -> Dict:
     """
     So khớp từng bullet trong CV experience với JD responsibilities.
@@ -306,6 +396,11 @@ def match_bullets_to_jd(
 
     # Fallback nếu không có model
     if model is None:
+        print(
+            f"[semantic-model] Match run: model_loaded=false; using TF-IDF fallback. "
+            f"model='{_model_name}'",
+            flush=True,
+        )
         return _fallback_semantic_result(
             cv_experience_text=cv_experience_text,
             jd_text=jd_text,
@@ -313,20 +408,44 @@ def match_bullets_to_jd(
             top_k=top_k,
         )
 
+    print(
+        f"[semantic-model] Match run: model_loaded=true; using '{_model_name}'.",
+        flush=True,
+    )
+
     cv_bullets = _extract_bullets(cv_experience_text)
     jd_lines = _extract_jd_responsibilities(jd_text)
 
     if not cv_bullets or not jd_lines:
-        return _fallback_semantic_result(
+        model_result = {
+            "avg_score": 0.0,
+            "semantic_score": 0.0,
+            "jd_coverage_score": 0.0,
+            "top_matches": [],
+            "weak_matches": [],
+            "unmatched_jd_lines": [
+                {"jd_line": line[:200], "best_cv_score": 0.0}
+                for line in jd_lines[:5]
+            ],
+            "status": "empty_input",
+            "cv_bullets_analyzed": len(cv_bullets[:30]),
+            "jd_lines_analyzed": len(jd_lines[:20]),
+            **_model_status_payload(),
+        }
+        tfidf_result = _fallback_semantic_result(
             cv_experience_text=cv_experience_text,
             jd_text=jd_text,
-            status="fallback_empty_input",
+            status="ok_tfidf_candidate",
             top_k=top_k,
+            is_fallback=False,
         )
+        return _select_best_semantic_result(model_result, tfidf_result)
 
     try:
         import numpy as np
         # Encode tất cả cùng lúc — hiệu quả hơn encode từng cái
+        from sklearn.metrics.pairwise import cosine_similarity as sk_cosine
+
         cv_embeddings = model.encode(cv_bullets[:30], convert_to_numpy=True)
         jd_embeddings = model.encode(jd_lines[:20], convert_to_numpy=True)
 
@@ -352,63 +471,86 @@ def match_bullets_to_jd(
             else:
                 weak_matches.append(match_entry)
 
-        # JD lines không được cover bởi bất kỳ CV bullet nào
-        # (max similarity < threshold)
         unmatched_jd = []
+        jd_best_scores = []
         for j, jd_line in enumerate(jd_lines[:20]):
             max_cv_score = float(np.max(sim_matrix[:, j]))
+            jd_best_scores.append(max_cv_score * 100.0)
             if max_cv_score < threshold:
                 unmatched_jd.append({
                     "jd_line": jd_line[:200],
                     "best_cv_score": round(max_cv_score * 100, 2),
                 })
 
-        # Tính điểm: % CV bullets match được JD + quality của match
-        match_rate = len(top_matches) / max(len(cv_bullets[:30]), 1)
-        avg_top_score = (
-            sum(m["score"] for m in top_matches) / len(top_matches)
-            if top_matches else 0.0
+        jd_coverage = (
+            sum(1 for score in jd_best_scores if score >= threshold * 100.0)
+            / max(len(jd_best_scores), 1)
         )
+        avg_jd_best_score = sum(jd_best_scores) / max(len(jd_best_scores), 1)
 
-        # semantic_score = 70% match rate + 30% avg quality
+        # Score by JD coverage, not CV bullet count. This avoids over-rewarding
+        # a CV that only repeats JD keywords without covering responsibilities.
         semantic_score = round(
-            (match_rate * 70.0) + (avg_top_score * 0.3),
-            2
+            (jd_coverage * 60.0) + (avg_jd_best_score * 0.4),
+            2,
         )
-
-        if semantic_score <= 0:
-            return _fallback_semantic_result(
-                cv_experience_text=cv_experience_text,
-                jd_text=jd_text,
-                status="fallback_low_embedding_score",
-                top_k=top_k,
-            )
 
         # Sort: top matches theo score desc
         top_matches.sort(key=lambda x: x["score"], reverse=True)
         weak_matches.sort(key=lambda x: x["score"])
 
-        return {
+        model_result = {
             "avg_score": round(
                 sum(m["score"] for m in top_matches + weak_matches)
                 / max(len(top_matches) + len(weak_matches), 1),
                 2
             ),
             "semantic_score": min(semantic_score, 100.0),
+            "jd_coverage_score": round(jd_coverage * 100.0, 2),
             "top_matches": top_matches[:top_k],
             "weak_matches": weak_matches[:top_k],
             "unmatched_jd_lines": unmatched_jd[:5],
             "status": "ok",
             "cv_bullets_analyzed": len(cv_bullets[:30]),
             "jd_lines_analyzed": len(jd_lines[:20]),
+            **_model_status_payload(),
         }
-
-    except Exception as e:
-        return _fallback_semantic_result(
+        tfidf_result = _fallback_semantic_result(
             cv_experience_text=cv_experience_text,
             jd_text=jd_text,
-            status=f"fallback_error: {str(e)}",
+            status="ok_tfidf_candidate",
             top_k=top_k,
+            is_fallback=False,
+        )
+        return _select_best_semantic_result(model_result, tfidf_result)
+
+    except Exception as e:
+        model_result = {
+            "avg_score": 0.0,
+            "semantic_score": 0.0,
+            "jd_coverage_score": 0.0,
+            "top_matches": [],
+            "weak_matches": [],
+            "unmatched_jd_lines": [
+                {"jd_line": line[:200], "best_cv_score": 0.0}
+                for line in jd_lines[:5]
+            ],
+            "status": f"embedding_error: {str(e)}",
+            "cv_bullets_analyzed": len(cv_bullets[:30]),
+            "jd_lines_analyzed": len(jd_lines[:20]),
+            **_model_status_payload(),
+        }
+        tfidf_result = _fallback_semantic_result(
+            cv_experience_text=cv_experience_text,
+            jd_text=jd_text,
+            status="ok_tfidf_candidate_after_embedding_error",
+            top_k=top_k,
+            is_fallback=False,
+        )
+        return _select_best_semantic_result(
+            model_result,
+            tfidf_result,
+            model_status=f"embedding_error: {str(e)}",
         )
 
 

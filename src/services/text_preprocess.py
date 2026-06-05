@@ -7,6 +7,7 @@ def clean_text(text: str) -> str:
         return ""
 
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"(?im)^\s*-{0,3}\s*page\s+\d+(?:\s+(?:of|/)\s+\d+)?\s*-{0,3}\s*$", "", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

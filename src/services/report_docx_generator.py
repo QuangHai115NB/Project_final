@@ -159,7 +159,15 @@ def _add_axes(doc: Document, axes: dict) -> None:
     doc.add_paragraph()
 
 
-def _add_breakdown(doc: Document, breakdown: dict, weights: dict) -> None:
+def _explanation_text(explanations: dict, key: str, language: str = "en") -> str:
+    item = explanations.get(key, {}) if explanations else {}
+    reasons = item.get("reasons_en" if language == "en" else "reasons_vi", []) or item.get("reasons_vi", [])
+    if not reasons:
+        return "-"
+    return " ".join(str(reason) for reason in reasons[:2])
+
+
+def _add_breakdown(doc: Document, breakdown: dict, weights: dict, explanations: dict | None = None) -> None:
     _add_heading(doc, "Weighted Breakdown")
     rows = [
         ("CV structure", breakdown.get("section_score", 0), weights.get("section_score")),
@@ -170,13 +178,14 @@ def _add_breakdown(doc: Document, breakdown: dict, weights: dict) -> None:
         ("Evidence quality", breakdown.get("jd_structure_score", breakdown.get("structure_score", 0)), weights.get("jd_structure_score")),
     ]
 
-    table = doc.add_table(rows=1, cols=3)
+    table = doc.add_table(rows=1, cols=4)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.LEFT
     header = table.rows[0].cells
     header[0].text = "Dimension"
     header[1].text = "Score"
     header[2].text = "Weight"
+    header[3].text = "Why points were deducted"
 
     for label, score, weight in rows:
         row = table.add_row().cells
@@ -184,6 +193,14 @@ def _add_breakdown(doc: Document, breakdown: dict, weights: dict) -> None:
         row[1].text = f"{float(score):.0f}/100"
         row[1].paragraphs[0].runs[0].font.color.rgb = _score_color(float(score))
         row[2].text = f"{float(weight):.0f}%" if weight is not None else "-"
+        row[3].text = _explanation_text(explanations or {}, {
+            "CV structure": "section_score",
+            "Skill coverage": "skill_score",
+            "Semantic match": "semantic_score",
+            "Technical keywords": "keyword_score",
+            "Experience alignment": "experience_score",
+            "Evidence quality": "jd_structure_score",
+        }.get(label, ""))
 
     doc.add_paragraph()
 
@@ -368,7 +385,7 @@ def generate_match_report_docx(match_record, report_json: dict) -> bytes:
     )
     _add_score_summary(doc, final_score, summary)
     _add_axes(doc, axes)
-    _add_breakdown(doc, breakdown, weights)
+    _add_breakdown(doc, breakdown, weights, report_json.get("score_explanations", {}))
     _add_skills_summary(doc, skills_summary)
     _add_section_analysis(doc, section_analysis)
     _add_semantic_analysis(doc, semantic_analysis)

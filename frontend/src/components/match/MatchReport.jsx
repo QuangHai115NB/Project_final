@@ -203,9 +203,15 @@ function normalizeUnmatchedJdLines(items = []) {
     .slice(0, 5);
 }
 
-function ScoreBar({ label, score, weight, t }) {
+function ScoreBar({ label, score, weight, explanation, language, t }) {
   const val = scoreValue(score);
   const tone = getTone(val);
+  const reasons = language === 'vi'
+    ? explanation?.reasons_vi || []
+    : explanation?.reasons_en || explanation?.reasons_vi || [];
+  const summary = language === 'vi'
+    ? explanation?.summary_vi
+    : explanation?.summary_en || explanation?.summary_vi;
 
   return (
     <div className="ui-surface rounded-lg p-4">
@@ -223,6 +229,21 @@ function ScoreBar({ label, score, weight, t }) {
         <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">
           {t('report.weight', { value: Number(weight).toFixed(0) })}
         </p>
+      )}
+      {summary && (
+        <p className="mt-3 text-xs font-semibold text-gray-700 dark:text-slate-300">
+          {summary}
+        </p>
+      )}
+      {reasons.length > 0 && (
+        <ul className="mt-2 space-y-1 text-xs leading-5 text-gray-600 dark:text-slate-400">
+          {reasons.slice(0, 3).map((reason, index) => (
+            <li key={`${label}-reason-${index}`} className="flex gap-2">
+              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-gray-400 dark:bg-slate-500" />
+              <span>{reason}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -538,6 +559,13 @@ function AnnotatedCvPanel({ structuredCv = {}, activeAnnotation, onSelectAnnotat
   const annotations = structuredCv.annotations || [];
   const annotationMap = buildAnnotationMap(annotations);
   const looseAnnotations = annotations.filter((annotation) => !annotation.item_id);
+  const [sectionPage, setSectionPage] = useState(0);
+  const sectionPageCount = Math.max(1, sections.length);
+  const visibleSections = sections.slice(sectionPage, sectionPage + 1);
+
+  useEffect(() => {
+    setSectionPage((page) => Math.min(page, sectionPageCount - 1));
+  }, [sectionPageCount]);
 
   if (!sections.length) return null;
 
@@ -569,9 +597,21 @@ function AnnotatedCvPanel({ structuredCv = {}, activeAnnotation, onSelectAnnotat
         </div>
       </div>
 
-      <div className="max-h-[780px] overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-950">
-        <div className="mx-auto max-w-3xl space-y-5 bg-white p-6 shadow-sm dark:bg-slate-900">
-          {sections.map((section) => (
+      {sections.length > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-950">
+          <span className="font-semibold text-gray-700 dark:text-slate-200">
+            {normalizeEnglishSectionLabel(sections[sectionPage]?.name)} ({sectionPage + 1}/{sectionPageCount})
+          </span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" disabled={sectionPage === 0} onClick={() => setSectionPage((page) => Math.max(0, page - 1))}>Prev</Button>
+            <Button size="sm" variant="secondary" disabled={sectionPage >= sectionPageCount - 1} onClick={() => setSectionPage((page) => Math.min(sectionPageCount - 1, page + 1))}>Next</Button>
+          </div>
+        </div>
+      )}
+
+      <div className="max-h-[78vh] overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+        <div className="w-full space-y-5 bg-white p-6 shadow-sm dark:bg-slate-900">
+          {visibleSections.map((section) => (
             <section key={section.name} className="space-y-2">
               <h4 className="border-b border-gray-200 pb-1 text-sm font-bold uppercase tracking-wide text-gray-800 dark:border-slate-700 dark:text-slate-100">
                 {normalizeEnglishSectionLabel(section.name)}
@@ -688,6 +728,7 @@ export default function MatchReport({ matchId, compact = false }) {
   const {
     summary = {},
     score_breakdown: scoreBreakdown = {},
+    score_explanations: scoreExplanations = {},
     score_axes: scoreAxes = {},
     score_weights: scoreWeights = {},
     skills_summary: skillsSummary,
@@ -778,6 +819,8 @@ export default function MatchReport({ matchId, compact = false }) {
               label={t(labelKey)}
               score={scoreBreakdown[key]}
               weight={scoreWeights[key]}
+              explanation={scoreExplanations[key]}
+              language={language}
               t={t}
             />
           ))}

@@ -4,7 +4,7 @@ from collections import defaultdict
 import re
 from typing import Dict, List
 
-SKILL_TAXONOMY_VERSION = "2026-04-21-v1"
+SKILL_TAXONOMY_VERSION = "2026-06-05-v2"
 
 SKILL_TAXONOMY = {
     "programming_languages": {
@@ -116,8 +116,10 @@ SKILL_TAXONOMY = {
         "restful": ["restful", "rest api", "restful api"],
         "graphql": ["graphql"],
         "mvc": ["mvc"],
-        "oop": ["oop", "object oriented programming"],
-        "solid": ["solid principles"],
+        "oop": ["oop", "object oriented programming", "object-oriented programming", "object oriented", "object-oriented"],
+        "solid": ["solid principles", "solid"],
+        "data structures": ["data structures", "data structure", "data structures and algorithms", "data structures & algorithms"],
+        "algorithms": ["algorithms", "algorithm", "algorithm design", "algorithmic efficiency", "algorithmic optimization", "algorithm optimization"],
         "clean code": ["clean code"],
     },
     "others": {

@@ -5,8 +5,6 @@ from src.data.rules_config import (
     REQUIRED_CV_SECTIONS,
     RECOMMENDED_CV_SECTIONS,
     GENERIC_PHRASES,
-    WEAK_BULLET_PATTERNS,
-    ACTION_VERBS,
 )
 from src.services.text_preprocess import clean_text
 
@@ -84,8 +82,6 @@ def analyze_bullet_quality(parsed_sections: dict) -> Dict[str, object]:
 
     total_bullets = len(lines)
     metric_bullets = 0
-    action_bullets = 0
-    weak_bullets = []
 
     metric_pattern = re.compile(
         r"(\d+%|\d+\+|[$€£]\d+|\d+\s*(users|clients|ms|s|sec|seconds|minutes|hours|apis|services|projects|records))",
@@ -94,22 +90,13 @@ def analyze_bullet_quality(parsed_sections: dict) -> Dict[str, object]:
 
     for _, line in lines:
         lowered = line.lower()
-        first_word = lowered.split()[0] if lowered.split() else ""
 
         if metric_pattern.search(lowered):
             metric_bullets += 1
 
-        if first_word in ACTION_VERBS:
-            action_bullets += 1
-
-        if any(lowered.startswith(pattern) for pattern in WEAK_BULLET_PATTERNS):
-            weak_bullets.append(line)
-
     return {
         "total_bullets": total_bullets,
         "metric_bullets": metric_bullets,
-        "action_verb_bullets": action_bullets,
-        "weak_bullets": weak_bullets[:10],
     }
 
 
@@ -217,20 +204,6 @@ def run_rule_checks(text: str, parsed_sections: dict) -> dict:
             "type": "add_metrics",
             "target": "experience",
             "message": "Mỗi project/kinh nghiệm nên có ít nhất 1 dòng mô tả chứa số liệu: %, số user, số API, số module, thời gian xử lý..."
-        })
-
-    if bullet_analysis["total_bullets"] > 0 and bullet_analysis["action_verb_bullets"] < max(1, bullet_analysis["total_bullets"] // 2):
-        penalty += 8
-        issues.append({
-            "code": "weak_bullets",
-            "severity": "medium",
-            "title": "Nhiều dòng mô tả chưa bắt đầu bằng động từ mạnh",
-            "details": bullet_analysis["weak_bullets"]
-        })
-        suggestions.append({
-            "type": "rewrite_bullets",
-            "target": "experience",
-            "message": "Viết dòng mô tả theo mẫu: Action Verb + Technology + Scope + Result. Ví dụ: Developed REST APIs using FastAPI for student support system, reducing response time by 30%."
         })
 
     structure_score = max(0.0, 100.0 - penalty)

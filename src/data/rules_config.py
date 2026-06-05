@@ -59,12 +59,37 @@ WEAK_BULLET_PATTERNS = [
 
 # Dong tu manh
 ACTION_VERBS = [
+    # --- Danh sách ban đầu (Original) ---
     "built", "developed", "implemented", "designed", "created", "optimized",
     "improved", "delivered", "deployed", "integrated", "automated", "migrated",
     "maintained", "refactored", "tested", "led", "analyzed", "engineered",
-    "debugged", "reduced", "increased", "accelerated", "launched"
-]
+    "debugged", "reduced", "increased", "accelerated", "launched",
 
+    # --- Nhóm Kiến trúc & Thiết kế hệ thống (Architecture & Design) ---
+    "architected", "structured", "modeled", "conceptualized", "formulated",
+    "drafted", "outlined", "mapped", "prototyped", "tailored",
+
+    # --- Nhóm Lập trình & Cấu hình (Coding & Configuration) ---
+    "programmed", "coded", "authored", "scripted", "configured", "customized",
+    "compiled", "assembled", "installed", "setup",
+
+    # --- Nhóm Tối ưu hóa & Nâng cấp (Optimization & Modernization) ---
+    "streamlined", "modernized", "upgraded", "transformed", "scaled", "enhanced",
+    "maximized", "minimized", "revamped", "standardized", "redesigned", "reengineered",
+    "simplified", "consolidated",
+
+    # --- Nhóm Kiểm thử, Bảo mật & Xử lý sự cố (Testing, Security & Problem Solving) ---
+    "resolved", "troubleshot", "audited", "secured", "validated", "verified",
+    "investigated", "diagnosed", "monitored", "assessed", "evaluated", "prevented",
+
+    # --- Nhóm Triển khai & Vận hành (Execution & Operation) ---
+    "executed", "orchestrated", "provisioned", "released", "published", "incorporated",
+    "operated", "administered", "facilitated", "driven", "generated", "produced",
+
+    # --- Nhóm Lãnh đạo & Quản lý (Leadership & Teamwork) ---
+    "spearheaded", "mentored", "coordinated", "directed", "managed", "supervised",
+    "collaborated", "partnered", "guided", "trained", "empowered", "championed"
+]
 #Dau hieu do luong
 METRIC_HINTS = [
     "%", "percent", "ms", "s", "sec", "seconds", "minutes", "hours",

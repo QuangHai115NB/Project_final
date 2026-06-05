@@ -116,12 +116,60 @@ def test_storage_signed_url_accepts_supabase_signedurl_field():
         storage.requests.post = original_post
 
 
+def test_clean_text_removes_pdf_page_markers():
+    from src.services.text_preprocess import clean_text
+
+    raw = "\n--- Page 1 ---\nSUMMARY\nPython developer\nPage 2\nEXPERIENCE\nBuilt APIs\n"
+    cleaned = clean_text(raw)
+
+    assert "Page 1" not in cleaned, "Page 1 marker should be removed"
+    assert "Page 2" not in cleaned, "Page 2 marker should be removed"
+    assert "SUMMARY" in cleaned, "Real CV content should remain"
+    assert "EXPERIENCE" in cleaned, "Real CV content should remain"
+
+
+def test_pdf_extractor_does_not_insert_page_markers():
+    import src.services.pdf_extractor as pdf_extractor
+
+    original_open = pdf_extractor.pdfplumber.open
+
+    class FakePage:
+        def __init__(self, text):
+            self.text = text
+
+        def extract_text(self):
+            return self.text
+
+    class FakePdf:
+        pages = [FakePage("SUMMARY\nPython"), FakePage("EXPERIENCE\nBuilt APIs")]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    pdf_extractor.pdfplumber.open = lambda path: FakePdf()
+    try:
+        text, meta = pdf_extractor.extract_text_from_pdf("fake.pdf")
+    finally:
+        pdf_extractor.pdfplumber.open = original_open
+
+    assert "--- Page" not in text, "Extractor should not add debug page markers"
+    assert "Page 1" not in text, "Extractor should not add Page 1 text"
+    assert "SUMMARY" in text, "Page text should remain"
+    assert "EXPERIENCE" in text, "Page text should remain"
+    assert meta["num_pages"] == 2, "Page count metadata should remain"
+
+
 if __name__ == "__main__":
     tests = [
         ("SQLite init_db works", test_sqlite_init_db),
         ("Register updates password for unverified account", test_register_updates_password_for_unverified_account),
         ("Storage access respects disabled public fallback", test_storage_access_url_raises_without_public_fallback),
         ("Storage signed URL supports Supabase signedURL field", test_storage_signed_url_accepts_supabase_signedurl_field),
+        ("Clean text removes PDF page markers", test_clean_text_removes_pdf_page_markers),
+        ("PDF extractor does not insert page markers", test_pdf_extractor_does_not_insert_page_markers),
     ]
 
     for name, fn in tests:

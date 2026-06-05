@@ -13,6 +13,7 @@ from src.services.report_docx_generator import generate_match_report_docx
 from src.services.report_pdf_generator import generate_match_report_pdf
 from src.services.rule_checker import run_rule_checks
 from src.services.section_parser import parse_sections
+from src.services.text_preprocess import clean_text
 from src.services.quota_service import ensure_can_create_match
 
 
@@ -41,8 +42,8 @@ def create_match_report(*, user_id: int, cv_id: int, jd_id: int) -> dict:
         if not cv_record or not jd_record:
             raise NotFoundError("CV or JD not found for this user")
 
-        cv_text = (cv_record.content_text or "").strip()
-        jd_text = (jd_record.content_text or "").strip()
+        cv_text = clean_text(cv_record.content_text or "")
+        jd_text = clean_text(jd_record.content_text or "")
         if not cv_text:
             raise ValidationError("CV content is empty. Please re-upload the CV.")
         if not jd_text:

@@ -34,16 +34,16 @@ export default function MatchMaker({ cvs, jds, onSuccess }) {
       <h3 className="text-lg font-bold text-gray-800 dark:text-white">{t('match.selectTitle')}</h3>
       <p className="text-sm text-gray-500 dark:text-slate-400">{t('match.selectDesc')}</p>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 xl:grid-cols-2">
         {/* CV selection */}
         <div className="space-y-2">
           <label className="text-sm font-semibold text-gray-700 dark:text-slate-200">{t('match.selectCv')}</label>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
+          <div className="max-h-[420px] min-h-[320px] space-y-2 overflow-y-auto pr-1">
             {cvs?.length > 0 ? cvs.map((cv) => (
               <button
                 key={cv.id}
                 onClick={() => setSelectedCv(cv)}
-                className={`w-full text-left px-3 py-2 rounded-xl border transition-all text-sm
+                className={`w-full text-left px-3 py-3 rounded-lg border transition-all text-sm
                   ${selectedCv?.id === cv.id ? 'border-primary bg-blue-50 text-primary font-semibold dark:border-sky-500 dark:bg-sky-950/40 dark:text-sky-200' : 'border-gray-200 hover:border-gray-400 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500'}`}
               >
                 {cv.title}
@@ -55,12 +55,12 @@ export default function MatchMaker({ cvs, jds, onSuccess }) {
         {/* JD selection */}
         <div className="space-y-2">
           <label className="text-sm font-semibold text-gray-700 dark:text-slate-200">{t('match.selectJd')}</label>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
+          <div className="max-h-[420px] min-h-[320px] space-y-2 overflow-y-auto pr-1">
             {jds?.length > 0 ? jds.map((jd) => (
               <button
                 key={jd.id}
                 onClick={() => setSelectedJd(jd)}
-                className={`w-full text-left px-3 py-2 rounded-xl border transition-all text-sm
+                className={`w-full text-left px-3 py-3 rounded-lg border transition-all text-sm
                   ${selectedJd?.id === jd.id ? 'border-primary bg-blue-50 text-primary font-semibold dark:border-sky-500 dark:bg-sky-950/40 dark:text-sky-200' : 'border-gray-200 hover:border-gray-400 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500'}`}
               >
                 {jd.title}

@@ -78,7 +78,7 @@ def _call_gemini(prompt: str, max_tokens: int = 500) -> str:
         return ""
 
 
-def rewrite_weak_bullet(
+def rewrite_bullet_with_context(
         bullet: str,
         missing_skills: List[str],
         jd_context: str = "",
@@ -261,8 +261,6 @@ def generate_bulk_suggestions(
         errors = [
             {"code": "missing_required_skills", "severity": "high",
              "details": ["Docker", "AWS"], ...},
-            {"code": "weak_bullets", "severity": "medium",
-             "details": ["Responsible for backend development"], ...},
         ]
         → trả về cùng list với suggested_fix được điền
     """
@@ -289,24 +287,13 @@ def generate_bulk_suggestions(
         # --- API-powered fix cho các lỗi quan trọng ---
         if api_calls_used < max_api_calls:
 
-            if code == "weak_bullets" and details:
-                bullet = details[0] if isinstance(details[0], str) else str(details[0])
-                rewritten = rewrite_weak_bullet(
-                    bullet=bullet,
-                    missing_skills=_extract_missing_from_errors(sorted_errors),
-                    jd_context=jd_text[:300],
-                )
-                if rewritten:
-                    optional_rewrite = rewritten
-                    api_calls_used += 1
-
-            elif code == "missing_metrics" and details:
+            if code == "missing_metrics" and details:
                 first_detail = details[0]
                 if isinstance(first_detail, dict):
                     bullet = first_detail.get("excerpt", "")
                 else:
                     bullet = str(first_detail)
-                rewritten = rewrite_weak_bullet(
+                rewritten = rewrite_bullet_with_context(
                     bullet=bullet,
                     missing_skills=_extract_missing_from_errors(sorted_errors),
                     jd_context=jd_text[:300],
@@ -335,7 +322,7 @@ def generate_bulk_suggestions(
                         first_bullet = cleaned
                         break
                 if first_bullet:
-                    rewritten = rewrite_weak_bullet(
+                    rewritten = rewrite_bullet_with_context(
                         bullet=first_bullet,
                         missing_skills=_extract_missing_from_errors(sorted_errors),
                         jd_context=jd_text[:400],
@@ -438,11 +425,6 @@ def _get_rule_based_fix(code: str, details: list, section: str) -> Dict[str, str
             "fix_en": f"Mention nice-to-have skills such as {joined} in Projects or Skills only if you have used them.",
             "meaning_vi": f"Các kỹ năng này không bắt buộc nhưng giúp tăng độ phù hợp. Chỉ thêm nếu bạn đã từng dùng.",
             "meaning_en": "These skills are not mandatory, but they improve fit. Add them only if you have real usage.",
-        },
-        "weak_bullets": {
-            "fix_en": "Rewrite weak bullets as: [Action Verb] + [what you built] + [technology] + [scope/result].",
-            "meaning_vi": "Hãy viết dòng mô tả theo hướng chủ động: bạn đã xây gì, dùng công nghệ nào, phạm vi ra sao và tạo kết quả gì.",
-            "meaning_en": "Use active ownership: what you built, which technology you used, the scope, and the result.",
         },
         "missing_metrics": {
             "fix_en": "Add measurable outcomes to 2-3 bullets, such as users, APIs, response time, throughput, modules, or percentage improvements.",

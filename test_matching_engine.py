@@ -325,6 +325,48 @@ def test_structure_score_strong_cv():
     )
 
 
+def test_passive_opening_checks_are_disabled():
+    """Passive openings should not be scored or reported."""
+    from src.services.jd_matcher import _compute_structure_score, _generate_errors_and_suggestions
+    from src.services.rule_checker import analyze_bullet_quality
+
+    sections = {
+        "Experience": "\n".join([
+            "- Responsible for backend development using Django for 10 APIs.",
+            "- Worked on PostgreSQL queries for 20 reports.",
+        ]),
+        "Projects": "\n".join([
+            "- Inventory dashboard using React and Django for 100 users.",
+            "- Helped with deployment scripts using Docker.",
+        ]),
+        "Skills": "Django, PostgreSQL, Docker, React",
+    }
+
+    score, detail = _compute_structure_score(
+        sections,
+        {"django", "postgresql", "docker", "react"},
+        {"django", "postgresql", "docker"},
+    )
+    bullet_analysis = analyze_bullet_quality({"sections": sections})
+
+    assert detail["total_bullets"] == 4
+    assert score >= 85, f"Passive opening checks should not reduce structure score, got {score}"
+    assert "metric_bullets" in bullet_analysis
+
+    issues, _ = _generate_errors_and_suggestions(
+        skill_detail={},
+        keyword_detail={},
+        experience_detail={},
+        structure_detail=detail,
+        semantic_detail={},
+        education_detail={},
+        cv_sections=sections,
+        jd_text="Backend role",
+        use_suggestion_engine=False,
+    )
+    assert all(issue["error_type"] != "language_quality" for issue in issues)
+
+
 def test_jd_section_parser_respects_preferred_block():
     """Preferred section bullets khÃ´ng Ä‘Æ°á»£c rÆ¡i sang required."""
     from src.services.jd_matcher import _extract_jd_skills
@@ -352,6 +394,39 @@ def test_jd_section_parser_respects_preferred_block():
     assert "postgresql" in result["contextual"], "Responsibilities should be tracked separately"
 
 
+def test_jd_filter_ignores_address_and_benefits_noise():
+    """JD matching should ignore address/benefits/company text and keep requirements only."""
+    from src.services.jd_matcher import _extract_jd_skills, _filter_jd_for_matching
+
+    jd_text = """
+    Company Overview:
+    We are a React and AWS company with a modern office.
+
+    Address:
+    123 Python Street, Docker Building, React City
+
+    Requirements:
+    - Strong backend experience with Django and PostgreSQL
+    - Build REST APIs for customer workflows
+
+    Benefits:
+    - Salary up to 5000 USD
+    - Free AWS training and office snacks
+    """
+
+    filtered = _filter_jd_for_matching(jd_text)
+    result = _extract_jd_skills(filtered)
+    all_skills = set(result["required"]) | set(result["preferred"]) | set(result["contextual"])
+
+    assert "django" in all_skills
+    assert "postgresql" in all_skills
+    assert "react" not in all_skills
+    assert "aws" not in all_skills
+    assert "docker" not in all_skills
+    assert "Salary" not in filtered
+    assert "123 Python Street" not in filtered
+
+
 def test_semantic_score_ignores_summary_and_skills_padding():
     """Copy JD vÃ o Summary/Skills khÃ´ng Ä‘Æ°á»£c lÃ m semantic score tÄƒng."""
     from src.services.jd_matcher import _compute_semantic_score
@@ -363,10 +438,89 @@ def test_semantic_score_ignores_summary_and_skills_padding():
         "Projects": "",
     }
 
-    score, detail = _compute_semantic_score(sections, SAMPLE_JD)
+    score, detail = _compute_semantic_score(sections, SAMPLE_JD, SAMPLE_JD)
 
     assert score == 0.0, f"Semantic score should ignore Summary/Skills padding, got {score}"
     assert detail.get("semantic_score", 0.0) == 0.0
+
+
+def test_semantic_falls_back_to_cv_text_when_no_sections_detected():
+    """When parsing finds no sections, semantic should still analyze the raw CV text."""
+    from src.services.jd_matcher import _compute_semantic_score
+
+    cv_text = (
+        "Built Django REST APIs with PostgreSQL for customer workflows. "
+        "Deployed Docker services and optimized SQL queries for production systems."
+    )
+    jd_text = (
+        "Responsibilities\n"
+        "- Build backend REST APIs for customer workflows\n"
+        "- Optimize PostgreSQL queries and deploy Docker services\n"
+    )
+
+    score, detail = _compute_semantic_score({}, cv_text, jd_text)
+
+    assert score > 0.0
+    assert detail.get("cv_bullets_analyzed", 0) > 0
+    assert detail.get("jd_lines_analyzed", 0) > 0
+
+
+def test_semantic_keeps_non_skill_jd_responsibilities():
+    """Semantic JD lines must include responsibilities even when they do not contain taxonomy skills."""
+    from src.services.semantic_matcher import _extract_jd_responsibilities
+
+    jd_text = (
+        "Build and maintain backend REST APIs for customer workflows\n"
+        "Optimize PostgreSQL queries and improve service performance\n"
+        "Experience with Python, Django, PostgreSQL, Docker\n"
+    )
+
+    lines = _extract_jd_responsibilities(jd_text)
+
+    assert "Build and maintain backend REST APIs for customer workflows" in lines
+    assert "Optimize PostgreSQL queries and improve service performance" in lines
+
+
+def test_semantic_score_rises_after_adding_reported_jd_evidence():
+    """Adding the JD evidence requested by the report should improve semantic score."""
+    from src.services.jd_matcher import _compute_semantic_score
+
+    jd_text = (
+        "Responsibilities\n"
+        "- Build and maintain backend REST APIs for customer workflows\n"
+        "- Optimize PostgreSQL queries and improve service performance\n"
+        "Requirements\n"
+        "- Experience with Python, Django, PostgreSQL, Docker\n"
+    )
+    weak_cv = "SUMMARY\nBackend developer familiar with Python and databases.\n\nSKILLS\nPython, Django, PostgreSQL, Docker"
+    fixed_cv = (
+        "SUMMARY\n"
+        "Built and maintained backend REST APIs for customer workflows using Python, Django, PostgreSQL and Docker. "
+        "Optimized PostgreSQL queries and improved service performance.\n\n"
+        "SKILLS\nPython, Django, PostgreSQL, Docker"
+    )
+
+    weak_score, weak_detail = _compute_semantic_score(
+        {"Summary": "Backend developer familiar with Python and databases.", "Skills": "Python, Django, PostgreSQL, Docker"},
+        weak_cv,
+        jd_text,
+    )
+    fixed_score, fixed_detail = _compute_semantic_score(
+        {
+            "Summary": (
+                "Built and maintained backend REST APIs for customer workflows using Python, Django, PostgreSQL and Docker. "
+                "Optimized PostgreSQL queries and improved service performance."
+            ),
+            "Skills": "Python, Django, PostgreSQL, Docker",
+        },
+        fixed_cv,
+        jd_text,
+    )
+
+    assert weak_detail.get("cv_bullets_analyzed", 0) > 0
+    assert fixed_detail.get("cv_bullets_analyzed", 0) > 0
+    assert fixed_score > weak_score + 20, f"Expected fixed CV semantic to improve, weak={weak_score}, fixed={fixed_score}"
+    assert fixed_score >= 70, f"Expected fixed CV semantic to be strong, got {fixed_score}"
 
 
 def test_skill_evidence_is_alias_aware():
@@ -420,6 +574,9 @@ def test_report_contains_versioned_scoring_snapshot():
     assert report["scoring"]["skill_taxonomy_version"], "Missing skill taxonomy version"
     assert report["scoring"]["weights_used"], "Missing weights_used snapshot"
     assert report["snapshots"]["score_values"], "Missing score_values snapshot"
+    assert report["score_explanations"], "Missing score explanations"
+    assert report["score_explanations"]["skill_score"]["reasons_vi"], "Missing skill score deduction reasons"
+    assert report["score_explanations"]["jd_structure_score"]["reasons_en"], "Missing evidence score deduction reasons"
 
     recomputed = round(
         sum(
@@ -430,6 +587,50 @@ def test_report_contains_versioned_scoring_snapshot():
     )
     assert recomputed == round(float(report["scoring"]["raw_final_score"]), 2)
     assert calibrate_score(recomputed) == round(float(report["summary"]["final_score"]), 2)
+
+
+def test_report_hides_fix_items_for_perfect_score_dimensions():
+    """A 100/100 dimension should not show repair items for that dimension."""
+    from types import SimpleNamespace
+
+    from src.services.report_builder import build_match_report
+
+    jd_report = {
+        "score_breakdown": {
+            "skill_score": 100,
+            "semantic_score": 100,
+            "keyword_score": 100,
+            "experience_score": 100,
+            "structure_score": 100,
+        },
+        "skills": {"score": 100, "required_coverage_pct": 100, "missing_required": [], "missing_preferred": []},
+        "keywords": {"score": 100, "missing": ["ghost-keyword"], "tfidf_similarity": 100},
+        "experience": {"score": 100},
+        "education": {},
+        "requirements": {"missing": []},
+        "semantic": {"status": "ok", "model_loaded": True, "score": 100, "unmatched_jd_lines": []},
+        "structure": {"score": 100},
+        "issues": [
+            {"code": "keyword_gap", "severity": "medium", "evidence": ["ghost-keyword"]},
+            {"code": "uncovered_responsibilities", "severity": "medium", "evidence": ["Already covered"]},
+        ],
+        "suggestions": [],
+        "rewrite_examples": [],
+        "meta": {"semantic_available": True},
+    }
+    report = build_match_report(
+        cv_record=SimpleNamespace(title="Perfect CV"),
+        jd_record=SimpleNamespace(title="JD"),
+        cv_text="Experience\n- Built APIs.",
+        jd_text="Requirements\n- Build APIs.",
+        parsed_sections={"sections": {"Experience": "- Built APIs."}, "sections_found": ["Experience"], "missing_required_sections": []},
+        rule_report={"score": 100, "structure_score": 100, "issues": [], "suggestions": [], "missing_sections": []},
+        jd_report=jd_report,
+    )
+
+    assert all(issue["code"] not in {"keyword_gap", "uncovered_responsibilities"} for issue in report["issues"])
+    assert report["score_explanations"]["keyword_score"]["reasons_vi"] == []
+    assert report["score_explanations"]["semantic_score"]["reasons_vi"] == []
 
 
 # ─── Run all tests ────────────────────────────────────────────────────
@@ -459,6 +660,208 @@ def test_semantic_fallback_score_not_zero():
     assert result["fallback"] == "tfidf_skill_overlap"
 
 
+def test_semantic_model_loaded_uses_tfidf_candidate_without_fallback_flag():
+    """When the model is loaded, TF-IDF may win as an ensemble scorer, not as fallback."""
+    import src.services.semantic_matcher as semantic_matcher
+
+    class FailingModel:
+        def encode(self, *args, **kwargs):
+            raise RuntimeError("forced encode failure")
+
+    original_model = semantic_matcher._model
+    original_failed = semantic_matcher._model_load_failed
+    original_error = semantic_matcher._model_load_error
+    semantic_matcher._model = FailingModel()
+    semantic_matcher._model_load_failed = False
+    semantic_matcher._model_load_error = ""
+
+    try:
+        empty_result = semantic_matcher.match_bullets_to_jd(
+            cv_experience_text="",
+            jd_text=SAMPLE_JD,
+        )
+        error_result = semantic_matcher.match_bullets_to_jd(
+            cv_experience_text="Built Django APIs for customer workflows.",
+            jd_text="Responsibilities\n- Build backend APIs for customer workflows",
+        )
+    finally:
+        semantic_matcher._model = original_model
+        semantic_matcher._model_load_failed = original_failed
+        semantic_matcher._model_load_error = original_error
+
+    assert "fallback" not in empty_result
+    assert empty_result["status"] == "empty_input"
+    assert empty_result["model_loaded"] is True
+    assert "fallback" not in error_result
+    assert error_result["status"] == "ok"
+    assert error_result["model_loaded"] is True
+    assert error_result["selected_semantic_scorer"] == "tfidf_skill_overlap"
+    assert error_result["model_status"].startswith("embedding_error:")
+    assert error_result["tfidf_semantic_score"] >= error_result["model_semantic_score"]
+
+
+def test_match_handles_string_unmatched_jd_lines():
+    """Matcher should not crash when semantic fallback returns JD lines as strings."""
+    from src.services.jd_matcher import _generate_errors_and_suggestions
+
+    issues, _ = _generate_errors_and_suggestions(
+        skill_detail={},
+        keyword_detail={},
+        experience_detail={},
+        structure_detail={},
+        semantic_detail={
+            "unmatched_jd_lines": [
+                "Build REST APIs for customer workflows",
+                "Optimize PostgreSQL queries and indexes",
+                "Deploy services with Docker and CI/CD",
+            ],
+        },
+        education_detail={},
+        cv_sections={},
+        jd_text="Backend Engineer role",
+        use_suggestion_engine=False,
+    )
+
+    issue = next(
+        item for item in issues
+        if item["code"] == "uncovered_responsibilities"
+    )
+    assert len(issue["evidence"]) == 3
+    assert all(isinstance(item, str) for item in issue["evidence"])
+
+
+def test_cs_fundamentals_and_oop_aliases_are_detected():
+    """CS fundamentals and hyphenated OOP wording should map to canonical skills."""
+    from src.data.skills_taxonomy import extract_skills
+
+    text = (
+        "Key Coursework: Data Structures & Algorithms, Algorithm Design. "
+        "Utilized Object-Oriented Programming principles in Java services."
+    )
+
+    skills = set(extract_skills(text)["skills"])
+
+    assert "data structures" in skills
+    assert "algorithms" in skills
+    assert "oop" in skills
+
+
+def test_education_requirement_is_not_reported_as_uncovered_semantic_gap():
+    """Covered Education requirements should not be treated as missing Experience evidence."""
+    from src.services.jd_matcher import match_cv_to_jd
+
+    cv = """
+Education
+Bachelor of Computer Science
+
+Experience
+- Implemented Java Spring Boot REST APIs using OOP principles.
+"""
+    jd = """
+Requirements
+- Bachelor's degree in Computer Science.
+- Strong knowledge of Object-Oriented Programming and Java.
+"""
+    parsed_cv = {
+        "sections": {
+            "Education": "Bachelor of Computer Science",
+            "Experience": "- Implemented Java Spring Boot REST APIs using OOP principles.",
+        }
+    }
+
+    result = match_cv_to_jd(cv, jd, parsed_cv=parsed_cv, use_suggestion_engine=False)
+    uncovered = [
+        item.get("jd_line", item) if isinstance(item, dict) else item
+        for item in result["semantic"].get("unmatched_jd_lines", [])
+    ]
+
+    assert result["education"]["missing"] == []
+    assert result["education"]["covered"]
+    assert all("bachelor" not in line.lower() for line in uncovered)
+
+
+def test_skill_only_requirements_are_not_reported_as_semantic_gaps_when_covered():
+    """Skill-only JD lines should not remain semantic gaps when the CV contains those skills."""
+    from src.services.jd_matcher import match_cv_to_jd
+
+    cv = """
+Education
+Bachelor of Computer Science
+Key Coursework: Data Structures & Algorithms, Algorithm Design
+
+Experience
+- Applied advanced data structures and algorithmic optimization techniques.
+- Utilized Object-Oriented Programming (OOP) principles.
+- Implemented Java Spring Boot REST APIs.
+- Implemented secure business workflows in C# (.NET).
+"""
+    jd = """
+Requirements
+- Strong knowledge of Data Structures and Algorithmic Efficiency.
+- Object-Oriented Programming experience.
+- Experience with Java or C#.
+"""
+    parsed_cv = {
+        "sections": {
+            "Education": "Bachelor of Computer Science\nKey Coursework: Data Structures & Algorithms, Algorithm Design",
+            "Experience": (
+                "- Applied advanced data structures and algorithmic optimization techniques.\n"
+                "- Utilized Object-Oriented Programming (OOP) principles.\n"
+                "- Implemented Java Spring Boot REST APIs.\n"
+                "- Implemented secure business workflows in C# (.NET)."
+            ),
+        }
+    }
+
+    result = match_cv_to_jd(cv, jd, parsed_cv=parsed_cv, use_suggestion_engine=False)
+    uncovered = [
+        item.get("jd_line", item) if isinstance(item, dict) else item
+        for item in result["semantic"].get("unmatched_jd_lines", [])
+    ]
+
+    assert result["skills"]["missing_required"] == []
+    assert all("java" not in line.lower() and "c#" not in line.lower() for line in uncovered)
+    assert all("data structures" not in line.lower() for line in uncovered)
+
+
+def test_section_aware_requirement_coverage_maps_soft_and_domain_evidence():
+    """Soft/domain requirements should be covered by equivalent recruiter-readable evidence."""
+    from src.services.jd_matcher import match_cv_to_jd
+
+    cv = """
+Experience
+- Performed root cause analysis and debugging for production incidents.
+- Designed relational database schemas and SQL migration scripts.
+- Created Swagger OpenAPI specifications for backend APIs.
+
+Skills
+PostgreSQL, Swagger, REST API
+"""
+    jd = """
+Requirements
+- Strong logical reasoning.
+- Strong database design fundamentals.
+- English technical documentation.
+"""
+    parsed_cv = {
+        "sections": {
+            "Experience": (
+                "- Performed root cause analysis and debugging for production incidents.\n"
+                "- Designed relational database schemas and SQL migration scripts.\n"
+                "- Created Swagger OpenAPI specifications for backend APIs."
+            ),
+            "Skills": "PostgreSQL, Swagger, REST API",
+        }
+    }
+
+    result = match_cv_to_jd(cv, jd, parsed_cv=parsed_cv, use_suggestion_engine=False)
+    requirements = result["requirements"]["requirements"]
+
+    assert result["semantic"]["requirement_coverage_score"] >= 90
+    assert all(item["covered"] for item in requirements)
+    assert {item["category"] for item in requirements} >= {"soft_skill", "domain_knowledge"}
+
+
 if __name__ == "__main__":
     tests = [
         ("Skill Extraction", test_skill_extraction),
@@ -470,11 +873,23 @@ if __name__ == "__main__":
         ("Section Parser", test_section_parser_with_sample_cv),
         ("Keyword Score", test_keyword_score),
         ("Structure Score", test_structure_score_strong_cv),
+        ("Passive opening checks disabled", test_passive_opening_checks_are_disabled),
         ("JD Section Parser", test_jd_section_parser_respects_preferred_block),
+        ("JD Filter Ignores Noise", test_jd_filter_ignores_address_and_benefits_noise),
         ("Semantic Ignores Summary Padding", test_semantic_score_ignores_summary_and_skills_padding),
+        ("Semantic Uses Raw CV Without Sections", test_semantic_falls_back_to_cv_text_when_no_sections_detected),
+        ("Semantic Keeps Non-skill JD Responsibilities", test_semantic_keeps_non_skill_jd_responsibilities),
+        ("Semantic Score Rises After JD Evidence", test_semantic_score_rises_after_adding_reported_jd_evidence),
         ("Alias-aware Skill Evidence", test_skill_evidence_is_alias_aware),
         ("Versioned Scoring Snapshot", test_report_contains_versioned_scoring_snapshot),
+        ("Hide Fix Items for Perfect Scores", test_report_hides_fix_items_for_perfect_score_dimensions),
         ("Semantic Fallback Score", test_semantic_fallback_score_not_zero),
+        ("Semantic Loaded Model Uses TF-IDF Candidate", test_semantic_model_loaded_uses_tfidf_candidate_without_fallback_flag),
+        ("String Unmatched JD Lines", test_match_handles_string_unmatched_jd_lines),
+        ("CS Fundamentals and OOP Aliases", test_cs_fundamentals_and_oop_aliases_are_detected),
+        ("Covered Education Is Not Semantic Gap", test_education_requirement_is_not_reported_as_uncovered_semantic_gap),
+        ("Covered Skill Lines Are Not Semantic Gaps", test_skill_only_requirements_are_not_reported_as_semantic_gaps_when_covered),
+        ("Section-aware Soft and Domain Evidence", test_section_aware_requirement_coverage_maps_soft_and_domain_evidence),
     ]
 
     passed = 0
