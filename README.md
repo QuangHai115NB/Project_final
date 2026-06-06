@@ -286,13 +286,6 @@ npm.cmd run build
 7. Người dùng xem report trên giao diện hoặc tải DOCX/PDF.
 8. Admin theo dõi thống kê hệ thống theo khoảng ngày, tháng hoặc năm.
 
-## Ghi Chú Bảo Mật
-
-- Không đưa `.env`, token, password, database URL thật vào git.
-- Nếu credential từng bị lộ, cần rotate lại ngay.
-- JWT secret, SMTP password, Redis URL, Supabase key và database password nên được quản lý bằng biến môi trường.
-- File upload có giới hạn dung lượng để giảm rủi ro abuse.
-
 ## Trạng Thái Hiện Tại
 
 Các phần chính đã có:
