@@ -15,6 +15,7 @@ from src.services.rule_checker import run_rule_checks
 from src.services.section_parser import parse_sections
 from src.services.text_preprocess import clean_text
 from src.services.quota_service import ensure_can_create_match
+from src.services.time_service import to_app_datetime, utc_iso
 
 
 def _pagination(limit: int = 10, offset: int = 0, max_limit: int = 50) -> tuple[int, int]:
@@ -95,7 +96,7 @@ def list_match_reports(*, user_id: int, limit: int = 10, offset: int = 0) -> dic
                     "cv_title": item.cv_title,
                     "jd_title": item.jd_title,
                     "similarity_score": float(item.similarity_score) if item.similarity_score else 0,
-                    "created_at": item.created_at.isoformat() if item.created_at else None,
+                    "created_at": utc_iso(item.created_at),
                 }
                 for item in matches
             ],
@@ -128,7 +129,7 @@ def get_match_detail(*, user_id: int, match_id: int) -> dict:
             "jd_id": record.jd_id,
             "similarity_score": float(record.similarity_score) if record.similarity_score else 0,
             "user_review": record.user_review or "",
-            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "created_at": utc_iso(record.created_at),
             "report": report_json,
         }
     finally:
@@ -183,7 +184,7 @@ def download_match_report(*, user_id: int, match_id: int) -> tuple[bytes, str]:
         docx_bytes = generate_match_report_docx(record, report_json)
         cv_title = report_json.get("summary", {}).get("cv_title", f"CV-{record.cv_id}")
         jd_title = report_json.get("summary", {}).get("jd_title", f"JD-{record.jd_id}")
-        date_str = record.created_at.strftime("%Y%m%d") if record.created_at else ""
+        date_str = to_app_datetime(record.created_at).strftime("%Y%m%d") if record.created_at else ""
         safe_name = secure_filename(f"{cv_title}_vs_{jd_title}_{date_str}.docx")
         if len(safe_name) > 200:
             safe_name = f"match_report_{record.id}.docx"
@@ -206,7 +207,7 @@ def download_match_report_pdf(*, user_id: int, match_id: int) -> tuple[bytes, st
         pdf_bytes = generate_match_report_pdf(record, report_json)
         cv_title = report_json.get("summary", {}).get("cv_title", f"CV-{record.cv_id}")
         jd_title = report_json.get("summary", {}).get("jd_title", f"JD-{record.jd_id}")
-        date_str = record.created_at.strftime("%Y%m%d") if record.created_at else ""
+        date_str = to_app_datetime(record.created_at).strftime("%Y%m%d") if record.created_at else ""
         safe_name = secure_filename(f"{cv_title}_vs_{jd_title}_{date_str}.pdf")
         if len(safe_name) > 200:
             safe_name = f"match_report_{record.id}.pdf"

@@ -22,7 +22,8 @@ def _payment_info(qr_data_url: str | None = None) -> dict:
     return {
         "plans": PAYMENT_PLANS,
         "payment_qr_data_url": qr_data_url,
-        "transfer_template": "CVR-{user_id}-{months}M",
+        "transfer_template": "{email_prefix}_{full_name_no_dau}",
+        "transfer_example": "nguyenvana_NguyenVanA",
         "manual_note": "Sau khi chuyển khoản, admin kiểm tra giao dịch và cộng số ngày premium thủ công.",
     }
 

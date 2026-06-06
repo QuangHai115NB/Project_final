@@ -384,13 +384,24 @@ class MatchRepository:
             for row in rows
         ]
 
-    def count_all(self, *, user_id: int | None = None) -> int:
+    def count_all(self, *, user_id: int | None = None, search: str | None = None) -> int:
         query = self.db.query(MatchHistory)
+        if search:
+            query = query.join(User, MatchHistory.user_id == User.id).filter(
+                User.email.ilike(f"%{search.strip()}%")
+            )
         if user_id is not None:
             query = query.filter(MatchHistory.user_id == user_id)
         return query.count()
 
-    def list_all(self, *, limit: int, offset: int, user_id: int | None = None) -> list[AdminMatchListItem]:
+    def list_all(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        user_id: int | None = None,
+        search: str | None = None,
+    ) -> list[AdminMatchListItem]:
         query = self.db.query(
             MatchHistory.id,
             MatchHistory.user_id,
@@ -409,6 +420,8 @@ class MatchRepository:
 
         if user_id is not None:
             query = query.filter(MatchHistory.user_id == user_id)
+        if search:
+            query = query.filter(User.email.ilike(f"%{search.strip()}%"))
 
         rows = query.order_by(MatchHistory.created_at.desc()).offset(offset).limit(limit).all()
         return [

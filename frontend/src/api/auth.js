@@ -202,14 +202,22 @@ export const matchAPI = {
 };
 
 export const adminAPI = {
-  overview: () => api.get('/admin/overview'),
+  overview: (filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.startDate) params.set('start_date', filters.startDate);
+    if (filters.endDate) params.set('end_date', filters.endDate);
+    if (filters.granularity) params.set('granularity', filters.granularity);
+    const query = params.toString();
+    return api.get(`/admin/overview${query ? `?${query}` : ''}`);
+  },
   listUsers: (limit = 20, offset = 0, search = '') =>
     api.get(`/admin/users?limit=${limit}&offset=${offset}&search=${encodeURIComponent(search)}`),
   getUser: (userId) => api.get(`/admin/users/${userId}`),
   updateUser: (userId, payload) => api.put(`/admin/users/${userId}`, payload),
-  listMatches: (limit = 20, offset = 0, userId = '') => {
+  listMatches: (limit = 20, offset = 0, userId = '', search = '') => {
     const params = new URLSearchParams({ limit, offset });
     if (userId) params.set('user_id', userId);
+    if (search) params.set('search', search);
     return api.get(`/admin/matches?${params.toString()}`);
   },
   getMatch: (matchId) => api.get(`/admin/matches/${matchId}`),

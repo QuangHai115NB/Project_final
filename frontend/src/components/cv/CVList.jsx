@@ -2,6 +2,7 @@ import { cvAPI } from '../../api/auth';
 import { FileText, FolderOpen } from 'lucide-react';
 import { Card, Button } from '../shared';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { formatApiDate } from '../../utils/dateTime';
 
 function CVCard({ cv, onDelete, onSelect }) {
   const { t, language } = useLanguage();
@@ -16,7 +17,7 @@ function CVCard({ cv, onDelete, onSelect }) {
           <p className="text-sm text-gray-500">{cv.original_filename}</p>
           {cv.created_at && (
             <p className="text-xs text-gray-400 mt-1">
-              {new Date(cv.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
+              {formatApiDate(cv.created_at, language === 'vi' ? 'vi-VN' : 'en-US')}
             </p>
           )}
         </div>

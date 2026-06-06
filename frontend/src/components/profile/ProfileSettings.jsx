@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { authAPI } from '../../api/auth';
 import { useAuth } from '../../context/AuthContext';
 import { Button, Card, Input } from '../shared';
+import { formatApiDate } from '../../utils/dateTime';
 
 function buildInitials(user) {
   const source = user?.full_name || user?.email || 'U';
@@ -205,7 +206,7 @@ export default function ProfileSettings({ t, tx, showToast }) {
             <div className="flex items-start justify-between gap-4">
               <dt className="text-gray-500 dark:text-slate-400">{tx('profile.joinedAt', 'Ngay tao tai khoan')}</dt>
               <dd className="text-right font-medium text-gray-900 dark:text-slate-100">
-                {user?.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}
+                {user?.created_at ? formatApiDate(user.created_at) : '-'}
               </dd>
             </div>
             <div className="flex items-start justify-between gap-4">

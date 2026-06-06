@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -19,7 +20,7 @@ os.environ.setdefault("ALLOW_PUBLIC_URL_FALLBACK", "false")
 
 from app import create_app  # noqa: E402
 from src.db.database import Base, SessionLocal, engine  # noqa: E402
-from src.db.models import CVDocument, JDDocument, User  # noqa: E402
+from src.db.models import CVDocument, JDDocument, MatchHistory, User  # noqa: E402
 from src.services.auth.password_service import hash_password  # noqa: E402
 import src.services.auth.account_service as auth_account_service  # noqa: E402
 import src.api.auth_routes as auth_routes  # noqa: E402
@@ -284,8 +285,50 @@ def test_free_plan_blocks_fourth_cv_upload():
 
 def test_admin_overview_requires_admin_and_returns_counts():
     reset_db()
-    create_verified_user(email="user@example.com")
+    user = create_verified_user(email="user@example.com")
     create_verified_user(email="admin@example.com", role="admin", plan="premium")
+    expired_premium = create_verified_user(email="expired@example.com", plan="premium")
+    db = SessionLocal()
+    try:
+        expired = db.query(User).filter(User.id == expired_premium.id).first()
+        expired.premium_until = datetime.utcnow() - timedelta(days=1)
+        cv = CVDocument(
+            user_id=user.id,
+            title="Backend CV",
+            original_filename="cv.pdf",
+            storage_path="user/cv.pdf",
+            content_text="Python backend engineer",
+        )
+        jd = JDDocument(
+            user_id=user.id,
+            title="Backend JD",
+            original_filename="jd.txt",
+            storage_path="user/jd.txt",
+            content_text="Python backend role",
+        )
+        db.add_all([cv, jd])
+        db.flush()
+        db.add_all([
+            MatchHistory(
+                user_id=user.id,
+                cv_id=cv.id,
+                jd_id=jd.id,
+                similarity_score=80,
+                report_json="{}",
+                created_at=datetime.utcnow() - timedelta(days=1),
+            ),
+            MatchHistory(
+                user_id=user.id,
+                cv_id=cv.id,
+                jd_id=jd.id,
+                similarity_score=60,
+                report_json="{}",
+                created_at=datetime.utcnow() - timedelta(days=1),
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
     user_token = issue_access_token(email="user@example.com")
     admin_token = issue_access_token(email="admin@example.com")
 
@@ -295,9 +338,28 @@ def test_admin_overview_requires_admin_and_returns_counts():
     response = client.get("/api/admin/overview", headers={"Authorization": f"Bearer {admin_token}"})
     payload = response.get_json()
     assert response.status_code == 200, payload
-    assert payload["users"] == 2
+    assert payload["users"] == 3
     assert payload["admins"] == 1
     assert payload["premium_users"] == 1
+    assert payload["free_users"] == 2
+    yesterday = ((datetime.utcnow() + timedelta(hours=7)).date() - timedelta(days=1)).isoformat()
+    yesterday_bucket = next(item for item in payload["matches_by_day"] if item["date"] == yesterday)
+    assert yesterday_bucket["matches"] == 2
+    assert yesterday_bucket["avg_score"] == 70
+
+    month_response = client.get(
+        (
+            f"/api/admin/overview?start_date={yesterday[:4]}-01-01"
+            f"&end_date={datetime.utcnow().date().isoformat()}&granularity=month"
+        ),
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    month_payload = month_response.get_json()
+    assert month_response.status_code == 200, month_payload
+    assert month_payload["period"]["granularity"] == "month"
+    assert month_payload["period"]["timezone"] == "Asia/Bangkok"
+    month_bucket = next(item for item in month_payload["matches_by_period"] if item["period"] == yesterday[:7])
+    assert month_bucket["matches"] == 2
 
 
 def test_jd_upload_and_match_flow():

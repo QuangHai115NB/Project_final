@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime
 
 from src.core.errors import PermissionDeniedError
 from src.db.models import User
 from src.db.repository import CVRepository, JDRepository, MatchRepository
+from src.services.time_service import local_day_start_utc, utc_iso, utc_now
 
 
 FREE_CV_LIMIT = 3
@@ -17,7 +18,7 @@ def is_premium(user: User) -> bool:
         return False
     if user.premium_until is None:
         return True
-    return user.premium_until > datetime.utcnow()
+    return user.premium_until > utc_now()
 
 
 def effective_plan(user: User) -> str:
@@ -25,7 +26,7 @@ def effective_plan(user: User) -> str:
 
 
 def _today_start_utc() -> datetime:
-    return datetime.combine(datetime.utcnow().date(), time.min)
+    return local_day_start_utc()
 
 
 def usage_payload(db, user: User) -> dict:
@@ -35,7 +36,7 @@ def usage_payload(db, user: User) -> dict:
     plan = effective_plan(user)
     return {
         "plan": plan,
-        "premium_until": user.premium_until.isoformat() if user.premium_until else None,
+        "premium_until": utc_iso(user.premium_until),
         "limits": {
             "cv": None if plan == "premium" else FREE_CV_LIMIT,
             "jd": None if plan == "premium" else FREE_JD_LIMIT,

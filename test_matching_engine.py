@@ -269,6 +269,53 @@ def test_output_structure():
     print(f"All keys present: {list(result.keys())}")
 
 
+def test_experience_score_uses_only_cv_to_jd_month_ratio():
+    from src.services.jd_matcher import match_cv_to_jd
+
+    cv = """
+Experience
+- Software Engineer with 18 months of backend development experience.
+"""
+    jd = """
+Requirements
+- At least 3 years of backend development experience.
+"""
+    parsed_cv = {
+        "sections": {
+            "Experience": "- Software Engineer with 18 months of backend development experience.",
+        }
+    }
+
+    result = match_cv_to_jd(cv, jd, parsed_cv=parsed_cv, use_semantic=False, use_suggestion_engine=False)
+
+    assert result["experience"]["cv_months"] == 18
+    assert result["experience"]["jd_months"] == 36
+    assert result["experience"]["score"] == 50
+
+
+def test_experience_score_does_not_penalize_when_jd_has_no_duration_requirement():
+    from src.services.jd_matcher import match_cv_to_jd
+
+    cv = """
+Experience
+- Built backend APIs with Python and PostgreSQL.
+"""
+    jd = """
+Requirements
+- Build backend APIs with Python.
+"""
+    parsed_cv = {
+        "sections": {
+            "Experience": "- Built backend APIs with Python and PostgreSQL.",
+        }
+    }
+
+    result = match_cv_to_jd(cv, jd, parsed_cv=parsed_cv, use_semantic=False, use_suggestion_engine=False)
+
+    assert result["experience"]["jd_months"] == 0
+    assert result["experience"]["score"] == 100
+
+
 def test_section_parser_with_sample_cv():
     """Section parser phải nhận ra các section trong CV mẫu."""
     from src.services.section_parser import parse_sections
@@ -746,8 +793,8 @@ def test_cs_fundamentals_and_oop_aliases_are_detected():
     assert "oop" in skills
 
 
-def test_education_requirement_is_not_reported_as_uncovered_semantic_gap():
-    """Covered Education requirements should not be treated as missing Experience evidence."""
+def test_credential_only_requirement_is_ignored_as_evidence_gap():
+    """Credential-only JD lines should not require CV evidence or suggestions."""
     from src.services.jd_matcher import match_cv_to_jd
 
     cv = """
@@ -776,8 +823,42 @@ Requirements
     ]
 
     assert result["education"]["missing"] == []
-    assert result["education"]["covered"]
+    assert result["education"]["requirements"] == []
+    assert all("bachelor" not in item["requirement"].lower() for item in result["requirements"]["requirements"])
     assert all("bachelor" not in line.lower() for line in uncovered)
+
+
+def test_vietnamese_degree_and_study_lines_are_ignored_as_evidence_gaps():
+    from src.services.jd_matcher import match_cv_to_jd
+
+    cv = """
+Experience
+- Developed React and Node.js features for an internal platform.
+"""
+    jd = """
+Requirements
+- Tốt nghiệp cử nhân hoặc kỹ sư ngành Công nghệ thông tin.
+- Đang học ngành Khoa học máy tính cũng được chấp nhận.
+- Develop frontend features with React.
+"""
+    parsed_cv = {
+        "sections": {
+            "Experience": "- Developed React and Node.js features for an internal platform.",
+        }
+    }
+
+    result = match_cv_to_jd(cv, jd, parsed_cv=parsed_cv, use_suggestion_engine=False)
+    uncovered = [
+        item.get("jd_line", item) if isinstance(item, dict) else item
+        for item in result["semantic"].get("unmatched_jd_lines", [])
+    ]
+    requirement_text = "\n".join(item["requirement"] for item in result["requirements"]["requirements"]).lower()
+
+    assert result["education"]["requirements"] == []
+    assert "cử nhân" not in requirement_text
+    assert "kỹ sư" not in requirement_text
+    assert "đang học" not in requirement_text
+    assert all("cử nhân" not in line.lower() and "kỹ sư" not in line.lower() for line in uncovered)
 
 
 def test_skill_only_requirements_are_not_reported_as_semantic_gaps_when_covered():
@@ -900,7 +981,7 @@ Requirements
     requirements = {item["requirement"]: item for item in result["requirements"]["requirements"]}
 
     assert result["education"]["missing"] == []
-    assert any("Bachelor" in item["requirement"] and item["score"] == 100 for item in requirements.values())
+    assert not any("Bachelor" in item["requirement"] for item in requirements.values())
     assert any("Design, develop and deliver" in key and item["score"] >= 60 for key, item in requirements.items())
     assert any("Analyze enterprise business workflows" in key and item["score"] >= 60 for key, item in requirements.items())
     assert any("modular software specifications" in key and item["score"] >= 60 for key, item in requirements.items())
@@ -914,6 +995,8 @@ if __name__ == "__main__":
         ("Full Match: Strong vs Weak", test_full_match_strong_vs_weak),
         ("Issues have suggested_fix", test_issues_have_suggested_fix),
         ("Output Structure", test_output_structure),
+        ("Experience Score Month Ratio", test_experience_score_uses_only_cv_to_jd_month_ratio),
+        ("Experience Score No JD Duration", test_experience_score_does_not_penalize_when_jd_has_no_duration_requirement),
         ("Section Parser", test_section_parser_with_sample_cv),
         ("Keyword Score", test_keyword_score),
         ("Structure Score", test_structure_score_strong_cv),
@@ -931,7 +1014,8 @@ if __name__ == "__main__":
         ("Semantic Loaded Model Uses TF-IDF Candidate", test_semantic_model_loaded_uses_tfidf_candidate_without_fallback_flag),
         ("String Unmatched JD Lines", test_match_handles_string_unmatched_jd_lines),
         ("CS Fundamentals and OOP Aliases", test_cs_fundamentals_and_oop_aliases_are_detected),
-        ("Covered Education Is Not Semantic Gap", test_education_requirement_is_not_reported_as_uncovered_semantic_gap),
+        ("Credential-only Requirements Are Ignored", test_credential_only_requirement_is_ignored_as_evidence_gap),
+        ("Vietnamese Degree Lines Are Ignored", test_vietnamese_degree_and_study_lines_are_ignored_as_evidence_gaps),
         ("Covered Skill Lines Are Not Semantic Gaps", test_skill_only_requirements_are_not_reported_as_semantic_gaps_when_covered),
         ("Section-aware Soft and Domain Evidence", test_section_aware_requirement_coverage_maps_soft_and_domain_evidence),
         ("Enterprise Requirements Gradual Scoring", test_enterprise_requirements_are_scored_gradually_not_zero),

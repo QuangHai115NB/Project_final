@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-from datetime import datetime
 
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
@@ -9,6 +8,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
+
+from src.services.time_service import to_app_datetime
 
 
 COLOR_PRIMARY = RGBColor(0x25, 0x63, 0xEB)
@@ -372,9 +373,9 @@ def generate_match_report_docx(match_record, report_json: dict) -> bytes:
 
     final_score = float(summary.get("final_score", 0) or 0)
     generated_at = (
-        match_record.created_at.strftime("%B %d, %Y %H:%M")
+        to_app_datetime(match_record.created_at).strftime("%B %d, %Y %H:%M")
         if getattr(match_record, "created_at", None)
-        else datetime.now().strftime("%B %d, %Y %H:%M")
+        else to_app_datetime().strftime("%B %d, %Y %H:%M")
     )
 
     _add_header(

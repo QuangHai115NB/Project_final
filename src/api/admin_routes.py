@@ -21,7 +21,11 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 @admin_bp.get("/overview")
 @require_admin
 def overview():
-    return response(admin_overview())
+    return response(admin_overview(
+        start_date=request.args.get("start_date"),
+        end_date=request.args.get("end_date"),
+        granularity=request.args.get("granularity", "day"),
+    ))
 
 
 @admin_bp.get("/users")
@@ -53,6 +57,7 @@ def list_matches():
         limit=request.args.get("limit", 20, type=int),
         offset=request.args.get("offset", 0, type=int),
         user_id=request.args.get("user_id", type=int),
+        search=request.args.get("search"),
     ))
 
 

@@ -13,6 +13,7 @@ from src.services.storage import (
     upload_jd as storage_upload_jd,
 )
 from src.services.quota_service import ensure_can_upload_jd
+from src.services.time_service import utc_iso
 
 
 def _remove_null_bytes(text: str) -> str:
@@ -25,7 +26,7 @@ def _serialize_jd(record) -> dict:
         "title": record.title,
         "original_filename": record.original_filename,
         "content_text": record.content_text[:500] if record.content_text else "",
-        "created_at": record.created_at.isoformat() if record.created_at else None,
+        "created_at": utc_iso(record.created_at),
     }
 
 

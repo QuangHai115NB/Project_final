@@ -1,6 +1,7 @@
 import { BriefcaseBusiness, FolderOpen } from 'lucide-react';
 import { Card, Button } from '../shared';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { formatApiDate } from '../../utils/dateTime';
 
 function JDCard({ jd, onDelete, onSelect }) {
   const { t, language } = useLanguage();
@@ -15,7 +16,7 @@ function JDCard({ jd, onDelete, onSelect }) {
           <p className="text-sm text-gray-500">{jd.original_filename}</p>
           {jd.created_at && (
             <p className="text-xs text-gray-400 mt-1">
-              {new Date(jd.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}
+              {formatApiDate(jd.created_at, language === 'vi' ? 'vi-VN' : 'en-US')}
             </p>
           )}
         </div>

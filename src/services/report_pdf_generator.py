@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import os
 import re
-from datetime import datetime
 from html import escape
 
 from reportlab.lib import colors
@@ -22,6 +21,8 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+from src.services.time_service import to_app_datetime
 
 
 COLOR_PRIMARY = colors.HexColor("#2563EB")
@@ -540,9 +541,9 @@ def generate_match_report_pdf(match_record, report_json: dict) -> bytes:
 
     summary = report_json.get("summary", {})
     generated_at = (
-        match_record.created_at.strftime("%B %d, %Y %H:%M")
+        to_app_datetime(match_record.created_at).strftime("%B %d, %Y %H:%M")
         if getattr(match_record, "created_at", None)
-        else datetime.now().strftime("%B %d, %Y %H:%M")
+        else to_app_datetime().strftime("%B %d, %Y %H:%M")
     )
 
     story.append(_paragraph("Báo cáo CV Reviewer", styles["title"]))

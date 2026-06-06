@@ -4,12 +4,30 @@ import { adminAPI } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { Button, Card, LoadingSpinner, Modal } from '../components/shared';
 import { Toast, useToast } from '../components/shared/Toast';
+import { formatApiDateTime } from '../utils/dateTime';
 
 const PAGE_SIZE = 12;
 
+function toDateInputValue(value) {
+  const date = new Date(value);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultOverviewFilters() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 13);
+  return {
+    startDate: toDateInputValue(start),
+    endDate: toDateInputValue(end),
+    granularity: 'day',
+  };
+}
+
 function formatDate(value) {
   if (!value) return 'Không giới hạn';
-  return new Date(value).toLocaleString('vi-VN');
+  return formatApiDateTime(value, 'vi-VN');
 }
 
 function scoreClass(score) {
@@ -29,10 +47,12 @@ export default function AdminDashboard() {
   const [matchPagination, setMatchPagination] = useState({ offset: 0, total: 0, has_next: false, has_prev: false });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [matchSearch, setMatchSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [uploadingQr, setUploadingQr] = useState(false);
+  const [overviewFilters, setOverviewFilters] = useState(defaultOverviewFilters);
 
   const navItems = useMemo(() => ([
     { id: 'overview', label: 'Tổng quan' },
@@ -48,9 +68,9 @@ export default function AdminDashboard() {
     fetchPaymentInfo();
   }, []);
 
-  const fetchOverview = async () => {
+  const fetchOverview = async (filters = overviewFilters) => {
     try {
-      const { data } = await adminAPI.overview();
+      const { data } = await adminAPI.overview(filters);
       setOverview(data);
     } catch (err) {
       showToast(err.response?.data?.error || 'Không thể tải tổng quan admin', 'error');
@@ -70,10 +90,10 @@ export default function AdminDashboard() {
     }
   };
 
-  const fetchMatches = async (offset = matchPagination.offset) => {
+  const fetchMatches = async (offset = matchPagination.offset, nextSearch = matchSearch) => {
     setLoading(true);
     try {
-      const { data } = await adminAPI.listMatches(PAGE_SIZE, offset);
+      const { data } = await adminAPI.listMatches(PAGE_SIZE, offset, '', nextSearch);
       setMatches(data.matches || []);
       setMatchPagination(data.pagination || {});
     } catch (err) {
@@ -153,7 +173,49 @@ export default function AdminDashboard() {
         <h2 className="text-2xl font-bold text-gray-900">Tổng quan hệ thống</h2>
         <p className="mt-1 text-sm text-gray-500">Theo dõi người dùng, tài liệu và lịch sử so khớp toàn hệ thống.</p>
       </div>
+      <form
+        className="mb-5 grid gap-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-[1fr_1fr_170px_auto]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          fetchOverview(overviewFilters);
+        }}
+      >
+        <label className="text-sm font-semibold text-gray-700 dark:text-slate-200">
+          Từ ngày
+          <input
+            type="date"
+            value={overviewFilters.startDate}
+            onChange={(event) => setOverviewFilters((current) => ({ ...current, startDate: event.target.value }))}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+          />
+        </label>
+        <label className="text-sm font-semibold text-gray-700 dark:text-slate-200">
+          Tới ngày
+          <input
+            type="date"
+            value={overviewFilters.endDate}
+            onChange={(event) => setOverviewFilters((current) => ({ ...current, endDate: event.target.value }))}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+          />
+        </label>
+        <label className="text-sm font-semibold text-gray-700 dark:text-slate-200">
+          Thống kê
+          <select
+            value={overviewFilters.granularity}
+            onChange={(event) => setOverviewFilters((current) => ({ ...current, granularity: event.target.value }))}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+          >
+            <option value="day">Theo ngày</option>
+            <option value="month">Theo tháng</option>
+            <option value="year">Theo năm</option>
+          </select>
+        </label>
+        <div className="flex items-end">
+          <Button type="submit" size="sm" className="w-full">Lọc</Button>
+        </div>
+      </form>
       {!overview ? <LoadingSpinner /> : (
+        <>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ['Người dùng', overview.users],
@@ -166,11 +228,20 @@ export default function AdminDashboard() {
             ['Free', overview.free_users],
           ].map(([label, value]) => (
             <Card key={label}>
-              <p className="text-sm font-semibold text-gray-500">{label}</p>
-              <p className="mt-2 text-3xl font-black text-gray-900">{value}</p>
+              <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">{label}</p>
+              <p className="mt-2 text-3xl font-black text-gray-900 dark:text-white">{value}</p>
             </Card>
           ))}
         </div>
+        <div className="mt-5 grid gap-4 xl:grid-cols-[1.45fr_1fr]">
+          <DailyMatchesChart data={overview.matches_by_period || overview.matches_by_day || []} period={overview.period} />
+          <TopUsersChart users={overview.top_users || []} />
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <PlanDistribution overview={overview} />
+          <DocumentMix overview={overview} />
+        </div>
+        </>
       )}
     </>
   );
@@ -233,6 +304,7 @@ export default function AdminDashboard() {
         <h2 className="text-2xl font-bold text-gray-900">Lịch sử so khớp toàn hệ thống</h2>
         <p className="mt-1 text-sm text-gray-500">Admin có thể review từng báo cáo CV-JD đã tạo.</p>
       </div>
+      {matchSearchForm}
       {loading ? <LoadingSpinner /> : (
         <div className="space-y-3">
           {matches.map((item) => (
@@ -297,13 +369,31 @@ export default function AdminDashboard() {
               </div>
             ))}
           </div>
-          <div className="mt-5 rounded-lg bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-            Nội dung chuyển khoản mẫu: <span className="font-bold">{paymentInfo?.transfer_template || 'CVR-{user_id}-{months}M'}</span>.
-            Người dùng sẽ thấy nội dung đã điền theo ID tài khoản và gói chọn.
+          <div className="mt-5 rounded-lg bg-amber-50 p-4 text-sm leading-6 text-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            Nội dung chuyển khoản đang dùng phía user: <span className="font-bold">{paymentInfo?.transfer_template || '{email_prefix}_{full_name_no_dau}'}</span>.
+            Ví dụ: <span className="font-bold">{paymentInfo?.transfer_example || 'nguyenvana_NguyenVanA'}</span>.
           </div>
         </Card>
       </div>
     </>
+  );
+
+  const matchSearchForm = (
+    <form
+      className="mb-5 flex max-w-xl gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        fetchMatches(0, matchSearch);
+      }}
+    >
+      <input
+        value={matchSearch}
+        onChange={(event) => setMatchSearch(event.target.value)}
+        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+        placeholder="Tìm theo email"
+      />
+      <Button type="submit" size="sm">Tìm</Button>
+    </form>
   );
 
   const content = activePage === 'users'
@@ -385,6 +475,158 @@ function Pagination({ pagination, onPage }) {
   );
 }
 
+function formatPeriodLabel(value, granularity) {
+  if (granularity === 'year') return value;
+  if (granularity === 'month') {
+    const [year, month] = value.split('-');
+    return `${month}/${year}`;
+  }
+  return new Date(`${value}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+}
+
+function DailyMatchesChart({ data, period }) {
+  const displayData = data.map((item) => ({
+    ...item,
+    matches: Number(item.matches || 0),
+    avg_score: Number(item.avg_score || 0),
+  }));
+  const granularity = period?.granularity || 'day';
+  const maxMatches = Math.max(1, ...displayData.map((item) => item.matches || 0));
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-bold text-gray-900 dark:text-white">Lượt so khớp theo thời gian</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Theo khoảng lọc đã chọn</p>
+          {period && (
+            <p className="mt-1 text-xs font-semibold text-gray-400 dark:text-slate-500">
+              {period.start_date} - {period.end_date} ({period.granularity}, {period.timezone})
+            </p>
+          )}
+        </div>
+        <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-700 dark:bg-blue-950/60 dark:text-blue-200">
+          {displayData.reduce((sum, item) => sum + (item.matches || 0), 0)} lượt
+        </span>
+      </div>
+      <div className="mt-5 flex h-56 items-end gap-2 overflow-x-auto pb-2">
+        {displayData.map((item) => {
+          const height = item.matches > 0
+            ? Math.max(8, Math.round((item.matches / maxMatches) * 180))
+            : 0;
+          const label = formatPeriodLabel(item.period || item.date, granularity);
+          return (
+            <div key={item.date} className="flex min-w-[42px] flex-1 flex-col items-center justify-end gap-2">
+              <div className="flex h-[180px] w-full items-end justify-center">
+                <div
+                  className="w-full max-w-[34px] rounded-t-md bg-blue-600 transition hover:bg-blue-700 dark:bg-blue-500"
+                  style={{ height }}
+                  title={`${label}: ${item.matches || 0} lượt, điểm TB ${item.avg_score || 0}`}
+                />
+              </div>
+              <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">{label}</span>
+              <span className="text-xs font-bold text-gray-900 dark:text-white">{item.matches || 0}</span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function TopUsersChart({ users }) {
+  const maxMatches = Math.max(1, ...users.map((item) => item.match_count || 0));
+  return (
+    <Card>
+      <h3 className="font-bold text-gray-900 dark:text-white">Tài khoản năng suất nhất</h3>
+      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Xếp theo số lượt so khớp đã tạo</p>
+      <div className="mt-5 space-y-4">
+        {users.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">Chưa có dữ liệu so khớp.</p>
+        ) : users.map((item) => (
+          <div key={item.user_id}>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <p className="min-w-0 truncate text-sm font-bold text-gray-900 dark:text-white">{item.email}</p>
+              <p className="shrink-0 text-sm font-black text-blue-700 dark:text-blue-300">{item.match_count}</p>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-slate-800">
+              <div
+                className="h-full rounded-full bg-blue-600 dark:bg-blue-500"
+                style={{ width: `${Math.max(6, ((item.match_count || 0) / maxMatches) * 100)}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Điểm TB {item.avg_score || 0} · gần nhất {formatDate(item.latest_match_at)}</p>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function PlanDistribution({ overview }) {
+  const free = overview.free_users || 0;
+  const premium = overview.premium_users || 0;
+  const total = Math.max(1, free + premium);
+  const segments = [
+    ['Free', free, 'bg-gray-500'],
+    ['Premium', premium, 'bg-emerald-500'],
+  ];
+  return (
+    <Card>
+      <h3 className="font-bold text-gray-900 dark:text-white">Phân bổ tài khoản</h3>
+      <div className="mt-5 flex h-4 overflow-hidden rounded-full bg-gray-100 dark:bg-slate-800">
+        {segments.map(([label, value, color]) => (
+          <div
+            key={label}
+            className={color}
+            style={{ width: `${(value / total) * 100}%` }}
+            title={`${label}: ${value}`}
+          />
+        ))}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {segments.map(([label, value, color]) => (
+          <div key={label} className="rounded-lg border border-gray-200 p-3 dark:border-slate-700">
+            <div className={`mb-2 h-2 w-8 rounded-full ${color}`} />
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{label}</p>
+            <p className="mt-1 text-xl font-black text-gray-900 dark:text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function DocumentMix({ overview }) {
+  const rows = [
+    ['CV', overview.cvs || 0],
+    ['JD', overview.jds || 0],
+    ['Match', overview.matches || 0],
+  ];
+  const maxValue = Math.max(1, ...rows.map(([, value]) => value));
+  return (
+    <Card>
+      <h3 className="font-bold text-gray-900 dark:text-white">Tài liệu và báo cáo</h3>
+      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">So sánh khối lượng dữ liệu trong hệ thống</p>
+      <div className="mt-5 space-y-4">
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-sm font-bold text-gray-900 dark:text-white">{label}</span>
+              <span className="text-sm font-black text-gray-700 dark:text-gray-200">{value}</span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-gray-100 dark:bg-slate-800">
+              <div
+                className="h-full rounded-full bg-indigo-500"
+                style={{ width: `${Math.max(6, (value / maxValue) * 100)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function UserModal({ data, onClose, onUpdate }) {
   if (!data) return null;
   const { user, quota, cvs, jds, matches } = data;
@@ -452,20 +694,20 @@ function MatchModal({ data, onClose }) {
         <div className="grid gap-3 lg:grid-cols-[260px_1fr]">
           <Card>
             <p className="text-sm text-gray-500">{data.user_email}</p>
-            <p className="mt-1 font-bold text-gray-900">{data.cv_title} vs {data.jd_title}</p>
+            <p className="mt-1 font-bold text-gray-900 dark:text-white">{data.cv_title} vs {data.jd_title}</p>
             <p className={`mt-3 text-5xl font-black ${scoreClass(data.similarity_score)}`}>
               {(data.similarity_score ?? 0).toFixed(0)}/100
             </p>
             <p className="mt-2 text-sm text-gray-500">{formatDate(data.created_at)}</p>
           </Card>
           <Card className="min-h-full">
-            <h3 className="font-bold text-gray-900">Đánh giá của người dùng</h3>
+            <h3 className="font-bold text-gray-900 dark:text-white">Đánh giá của người dùng</h3>
             {data.user_review ? (
-              <p className="mt-3 whitespace-pre-wrap rounded-lg bg-blue-50 p-4 text-sm leading-6 text-gray-800">
+              <p className="mt-3 whitespace-pre-wrap rounded-lg bg-blue-50 p-4 text-sm leading-6 text-gray-800 dark:bg-blue-950/50 dark:text-blue-50">
                 {data.user_review}
               </p>
             ) : (
-              <p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+              <p className="mt-3 rounded-lg bg-gray-50 p-4 text-sm text-gray-500 dark:bg-slate-800 dark:text-slate-300">
                 Người dùng chưa viết đánh giá cho lần so khớp này.
               </p>
             )}
@@ -473,18 +715,18 @@ function MatchModal({ data, onClose }) {
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <Card>
-            <h3 className="font-bold text-gray-900">Tóm tắt</h3>
-            <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-sm text-gray-700">
+            <h3 className="font-bold text-gray-900 dark:text-white">Tóm tắt</h3>
+            <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-sm text-gray-700 dark:text-slate-200">
               {JSON.stringify(summary, null, 2)}
             </pre>
           </Card>
           <Card>
-            <h3 className="font-bold text-gray-900">Vấn đề phát hiện ({issues.length})</h3>
+            <h3 className="font-bold text-gray-900 dark:text-white">Vấn đề phát hiện ({issues.length})</h3>
             <div className="mt-3 max-h-72 space-y-2 overflow-auto">
               {issues.length === 0 ? <p className="text-sm text-gray-500">Không có vấn đề</p> : issues.map((issue, index) => (
-                <div key={`${issue.code}-${index}`} className="rounded-lg border border-gray-200 p-3">
-                  <p className="text-sm font-bold text-gray-900">{issue.title || issue.code}</p>
-                  <p className="text-xs text-gray-500">{issue.severity}</p>
+                <div key={`${issue.code}-${index}`} className="rounded-lg border border-gray-200 p-3 dark:border-slate-700">
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">{issue.title || issue.code}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{issue.severity}</p>
                 </div>
               ))}
             </div>

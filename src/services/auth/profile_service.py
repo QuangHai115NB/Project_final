@@ -5,6 +5,7 @@ from src.db.database import SessionLocal
 from src.db.repository import UserRepository
 from src.services.storage import BUCKET_AVATAR, create_public_url, delete_avatar, upload_avatar
 from src.services.quota_service import effective_plan
+from src.services.time_service import utc_iso
 
 
 def _clean_optional(value: str | None, *, max_length: int | None = None) -> str | None:
@@ -27,14 +28,14 @@ def serialize_user_profile(user) -> dict:
         "role": user.role,
         "plan": user.plan,
         "effective_plan": effective_plan(user),
-        "premium_until": user.premium_until.isoformat() if user.premium_until else None,
+        "premium_until": utc_iso(user.premium_until),
         "is_active": user.is_active,
         "full_name": user.full_name,
         "phone": user.phone,
         "headline": user.headline,
         "bio": user.bio,
         "avatar_url": avatar_url,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "created_at": utc_iso(user.created_at),
     }
 
 

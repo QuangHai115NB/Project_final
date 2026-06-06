@@ -10,6 +10,7 @@ import { Button, Card, Modal, LoadingSpinner } from '../components/shared';
 import { useToast, Toast } from '../components/shared/Toast';
 import { LanguageToggle, useLanguage } from '../i18n/LanguageContext';
 import { ThemeToggle } from '../theme/ThemeContext';
+import { formatApiDate, formatApiDateTime } from '../utils/dateTime';
 
 const MATCH_PAGE_SIZE = 8;
 
@@ -115,7 +116,7 @@ function CvDetailModal({ cv, onClose }) {
         <div className="flex items-center gap-3 text-sm text-gray-500">
           <span>{cv.original_filename}</span>
           {cv.created_at && (
-            <span>{new Date(cv.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}</span>
+            <span>{formatApiDate(cv.created_at, language === 'vi' ? 'vi-VN' : 'en-US')}</span>
           )}
         </div>
 
@@ -207,7 +208,7 @@ function JdDetailModal({ jd, onClose }) {
           <div className="flex items-center gap-3 text-sm text-gray-500">
             <span>{t('dashboard.manualJd')}</span>
             {jd.created_at && (
-              <span>{new Date(jd.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}</span>
+              <span>{formatApiDate(jd.created_at, language === 'vi' ? 'vi-VN' : 'en-US')}</span>
             )}
           </div>
           <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -224,7 +225,7 @@ function JdDetailModal({ jd, onClose }) {
         <div className="flex items-center gap-3 text-sm text-gray-500">
           <span>{jd.original_filename}</span>
           {jd.created_at && (
-            <span>{new Date(jd.created_at).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}</span>
+            <span>{formatApiDate(jd.created_at, language === 'vi' ? 'vi-VN' : 'en-US')}</span>
           )}
         </div>
 
@@ -573,7 +574,7 @@ export default function Dashboard() {
                     <p className="text-sm text-gray-500">vs {m.jd_title}</p>
                     {m.created_at && (
                       <p className="mt-1 text-xs text-gray-400">
-                        {new Date(m.created_at).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')}
+                        {formatApiDateTime(m.created_at, language === 'vi' ? 'vi-VN' : 'en-US')}
                       </p>
                     )}
                   </button>
@@ -652,7 +653,7 @@ export default function Dashboard() {
             <p className="mt-2 text-3xl font-black capitalize text-gray-900">{plan}</p>
             <p className="mt-1 text-sm text-gray-500">
               {plan === 'premium'
-                ? `Hạn sử dụng: ${user?.premium_until ? new Date(user.premium_until).toLocaleDateString('vi-VN') : 'không giới hạn'}`
+                ? `Hạn sử dụng: ${user?.premium_until ? formatApiDate(user.premium_until, 'vi-VN') : 'không giới hạn'}`
                 : 'Free: 3 CV, 3 JD, 1 lần so khớp mỗi ngày'}
             </p>
           </Card>
